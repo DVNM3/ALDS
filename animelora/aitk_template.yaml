@@ -1,7 +1,3 @@
-# Default AI Toolkit job for Anima (from the user's "Anima AI toolkit setteings.yaml").
-# animelora fills: name, training_folder, trigger_word, datasets[0].folder_path / resolution, the step schedule
-# (train.steps, batch_size, gradient_accumulation, warmup, save.save_every, max_step_saves_to_keep,
-# sample.sample_every) and sample.samples. Everything else is used as written here.
 ---
 job: "extension"
 config:

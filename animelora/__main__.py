@@ -1,18 +1,3 @@
-"""animelora - turn anime episodes into a LoRA training dataset for one character.
-
-  scan     episodes -> frames -> character detections -> identity clusters (pick your character);
-           OP/ED are found automatically as segments repeated across episodes
-  autoskip re-run / clear the OP/ED detection
-  clusters re-run clustering with other parameters
-  split    split one mixed cluster into smaller ones
-  build    chosen cluster(s)/reference images -> crops -> dedup -> tags -> sorted folders (+ outfit tokens)
-  outfits  re-run outfit separation on a built character
-  reject   mark built images as another character: removed, and later builds leave out what looks like them
-  tags     bulk edit captions: list / remove / replace / add tags, undo
-  export   reviewed sorted folders -> flat AI Toolkit dataset (image + .txt), optionally balanced
-  clean    free disk space (extracted frames, thumbnails)
-  gui      all of the above in a browser interface
-"""
 import argparse
 import sys
 from pathlib import Path
@@ -21,8 +6,8 @@ from .common import Project, parse_ranges, setup_runtime
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="animelora", description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(prog="animelora",
+                                 description="Turn anime episodes into a LoRA training dataset for one character.")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("scan", help="extract frames, detect and cluster characters")
@@ -59,7 +44,7 @@ def main(argv=None):
     p.add_argument("--threshold", type=float, help="CCIP match threshold (default 0.13; higher = looser)")
     p.add_argument("--relax", type=float, default=1.0,
                    help="enable shot tracking: also take overlapping boxes in the same shot scoring under "
-                        "threshold*relax (e.g. 1.3). Off by default - it pulled in wrong characters in tests")
+                        "threshold*relax (e.g. 1.3). Off by default: it can pull in wrong characters")
     p.add_argument("--min-size", type=int,
                    help="min crop size, sqrt(width*height) in px (default 448, or 320 with --upscale)")
     p.add_argument("--upscale", action="store_true",
@@ -131,13 +116,12 @@ def main(argv=None):
         setup_runtime()
     try:
         run_command(project, a)
-    except KeyboardInterrupt:  # Ctrl+C: the command's Transaction has already rolled back
+    except KeyboardInterrupt:
         print("[stopped] nothing from this command was kept")
         return 130
 
 
 def run_command(project, a):
-    """Long commands run inside a Transaction (txn.py): stopped or failed -> what they generated is removed."""
     from . import txn
 
     if a.cmd == "scan":

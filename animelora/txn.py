@@ -1,5 +1,3 @@
-"""Undo for long commands: snapshot what a command will touch; if it is stopped (or fails), delete what it
-generated and put the snapshot back, so the project looks exactly as before the command."""
 import shutil
 import time
 from pathlib import Path
@@ -15,13 +13,6 @@ def _remove(p: Path):
 
 
 class Transaction:
-    """with Transaction(base, keep=..., replace=..., new_in=..., remove_if_new=...):
-        keep          files/dirs the command updates in place -> copied now, copy restored on rollback
-        replace       files/dirs the command throws away and rebuilds -> moved aside now, moved back on rollback
-        new_in        dirs whose new entries are the command's output -> those entries deleted on rollback
-        remove_if_new paths that don't exist yet -> deleted entirely on rollback (e.g. a brand new project)
-    The backup lives in `base` (same drive, so moving is instant) and is removed when the command succeeds."""
-
     def __init__(self, base, keep=(), replace=(), new_in=(), remove_if_new=()):
         as_paths = lambda xs: [Path(x) for x in xs]
         self.base = Path(base)
@@ -48,10 +39,10 @@ class Transaction:
             _remove(self.backup)
         else:
             self.rollback()
-        return False  # let the exception through
+        return False
 
     def rollback(self):
-        for p in self.fresh:  # the whole thing was created by this command
+        for p in self.fresh:
             _remove(p)
         for d, before in self.listing.items():
             if d.exists():
@@ -66,12 +57,10 @@ class Transaction:
                     p.parent.mkdir(parents=True, exist_ok=True)
                     shutil.move(str(src), str(p))
                 elif p.exists() and not any(p == f or f in p.parents for f in self.fresh):
-                    _remove(p)  # didn't exist before the command
+                    _remove(p)
         _remove(self.backup)
         print("[undo] stopped - everything this command generated was removed")
 
-
-# ---- what each command touches ----
 
 def scan_txn(project: Project):
     s = project.scan_dir
@@ -82,7 +71,6 @@ def scan_txn(project: Project):
 
 
 def clusters_txn(project: Project):
-    """re-cluster, split, autoskip: cluster list + contact sheets, OP/ED flags, new fingerprints"""
     s = project.scan_dir
     return Transaction(project.dir,
                        keep=[project.path("project.json"), s / "frames.json", s / "clusters.json",
@@ -91,9 +79,6 @@ def clusters_txn(project: Project):
 
 
 def build_txn(project: Project, name: str, ref_dir=None):
-    """Call build.check_overwrite first: this moves sorted/ aside. Caption history goes too - its snapshots
-    belong to the old captions. The project's crop cache (cache.py) is left out on purpose: what a stopped
-    build analysed stays valid and makes the next build faster."""
     c = project.char_dir(name)
     return Transaction(project.dir,
                        replace=[c / "sorted", c / "_deleted", c / "_dropped", c / "_caption_history",
@@ -103,8 +88,6 @@ def build_txn(project: Project, name: str, ref_dir=None):
 
 
 def export_txn(project: Project, name: str, out_dir: Path, config_dir=None):
-    """`keep` (a copy, not a move) for the dataset folder, so export's own check that it never writes into a
-    folder it didn't create still sees the folder as it is."""
     c = project.char_dir(name)
     return Transaction(project.dir, keep=[out_dir],
                        new_in=[c] + ([Path(config_dir)] if config_dir else []),

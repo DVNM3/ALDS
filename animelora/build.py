@@ -1,5 +1,3 @@
-"""Stage 3: select the chosen character everywhere, crop it three ways, filter bad crops, drop
-near-duplicates, tag with WD14, sort into framing/view folders and write Anima-style captions."""
 import functools
 import re
 import shutil
@@ -20,14 +18,12 @@ from .identity import ccip_cross, ccip_features
 from . import negatives
 from .scan import load_state
 
-# Calibrated on a test episode with cluster references: true matches scored < 0.10, other characters
-# 0.13-0.18 (CCIP's own pairwise default, 0.178, let those in).
 DEFAULT_THRESHOLD = 0.13
-MIN_CONTRAST = 18.0    # grayscale std; fades to black/white measured ~7, normal shots 40+
-TEXT_MIN_CONF = 0.75   # OCR confidence for a recognised word to count as on-screen text
+MIN_CONTRAST = 18.0
+TEXT_MIN_CONF = 0.75
 OFFMODEL_TAGS = ("chibi", "super deformed", "blurry")
-UPSCALE_MIN_FACTOR = 1.15  # smaller enlargements aren't worth a model pass
-MAX_ASPECT = 3.0           # long side / short side of a usable crop
+UPSCALE_MIN_FACTOR = 1.15
+MAX_ASPECT = 3.0
 CROP_TYPES = ("full", "half", "head")
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 FRAMINGS = ("close_up", "upper_body", "cowboy_shot", "full_body")
@@ -46,7 +42,7 @@ def reference_features(project, cluster_ids, ref_dir, dets, F, cache):
             if cid not in by_id:
                 raise SystemExit(f"cluster #{cid} does not exist (have #1..#{len(by_id)})")
             feats = F[[dets[m]["feat"] for m in by_id[cid]["members"]]]
-            if len(feats) > 64:  # keep the most central members: robust to a few strays in the cluster
+            if len(feats) > 64:
                 feats = feats[cache.get(cache.central, digest(feats),
                                         lambda: np.argsort(ccip_cross(feats, feats).mean(1))[:64])]
             refs.append(feats)
@@ -71,16 +67,11 @@ def reference_features(project, cluster_ids, ref_dir, dets, F, cache):
 
 
 def match_score(feats, refs):
-    """Mean of the k smallest CCIP differences to the reference set (k grows with the number of refs)."""
     k = max(1, min(5, len(refs) // 4))
     return np.sort(ccip_cross(feats, refs), axis=1)[:, :k].mean(1)
 
 
 def select(frames, dets, F, refs, threshold, relax, cache, negs=None):
-    """One detection per frame: the best CCIP match under `threshold`, skipping detections closer to an image
-    rejected in review than to the references (negatives.py). With relax > 1, extend along each shot to
-    neighbouring frames where an overlapping box scores under threshold*relax.
-    -> (chosen, best score per frame, frames left out only because of a rejected image)"""
     elig = [d for d in dets if d["feat"] >= 0 and frame_in_use(frames[d["frame"]])]
     feats_of = lambda ids: F[[dets[i]["feat"] for i in ids]]
     ids = [d["id"] for d in elig]
@@ -125,7 +116,6 @@ def select(frames, dets, F, refs, threshold, relax, cache, negs=None):
 
 
 def crop_boxes(img, det, detect_halfbody):
-    """The three crops of a detection, before the size filter (cached: they don't depend on build settings)."""
     W, H = img.size
     full = expand_box(det["box"], 1.12, W, H)
     out = {"full": full}
@@ -143,13 +133,11 @@ def crop_boxes(img, det, detect_halfbody):
 
 
 def usable_crops(boxes, min_size):
-    """Drop small crops and slivers (a character mostly hidden behind a door frame etc.)."""
     return {t: b for t, b in boxes.items() if box_area(b) ** 0.5 >= min_size
             and max(b[2] - b[0], b[3] - b[1]) <= MAX_ASPECT * min(b[2] - b[0], b[3] - b[1])}
 
 
 def crowded(crop_box, det, frame_dets):
-    """Another character takes a real part of this crop."""
     for o in frame_dets:
         if o["id"] == det["id"]:
             continue
@@ -170,32 +158,24 @@ def image_stats(img):
 
 
 def read_text(img, ocr):
-    """[(word, confidence)] read on screen; [] when text detection finds nothing. (ocr() runs the text detector
-    itself, with the same model and thresholds as detect_text_with_ocr - checking with that first ran the
-    detector twice on every crop with text, a quarter of a first build's time on text-heavy shows.)"""
     return [(txt, float(score)) for _, txt, score in ocr(img)]
 
 
 def has_text(words):
-    """Real readable text (credits, titles). Text detection alone fired on line art (e.g. patterned scarves),
-    so only drop when recognition reads an actual word with confidence; false hits read as gibberish < 0.5."""
     return any(score >= TEXT_MIN_CONF and len(re.sub(r"[\W_]", "", txt)) >= 3 for txt, score in words)
 
 
 def upscale_factor(box, target):
-    """How much to enlarge so sqrt(w*h) reaches `target` (at most 4x); 1.0 = leave as is."""
     f = min(4.0, target / box_area(box) ** 0.5)
     return f if f >= UPSCALE_MIN_FACTOR else 1.0
 
 
 def upscale(img, f, upscale_with_cdc):
-    """CDC anime model at 4x, then LANCZOS down to the factor."""
     big = upscale_with_cdc(img, silent=True)
     return big.resize((round(img.width * f), round(img.height * f)), Image.LANCZOS)
 
 
 def dedup(items, sim):
-    """Greedy: best-quality crop first; drop any later crop of the same type whose WD14 embedding is too close."""
     keep = []
     for ctype in CROP_TYPES:
         group = [it for it in items if it["type"] == ctype]
@@ -214,7 +194,6 @@ def dedup(items, sim):
 
 
 def check_overwrite(project, name, overwrite):
-    """Called before the undo snapshot is taken too (the snapshot moves sorted/ aside)."""
     sorted_dir = project.char_dir(name) / "sorted"
     if sorted_dir.exists() and not overwrite:
         raise SystemExit(f"{sorted_dir} already exists (your reviewed images?). Use --overwrite to rebuild it.")
@@ -223,8 +202,6 @@ def check_overwrite(project, name, overwrite):
 def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, sim, series,
               keep_core, screencap, tagger, keep_text, keep_crowded, keep_offmodel, save_dropped, overwrite,
               upscale_to=0, outfits=True, fresh=False):
-    """upscale_to: 0 = off, else enlarge kept crops smaller than this (sqrt of area, px) with an anime upscaler.
-    fresh: ignore the saved per-crop analysis (cache.py) and redo every model pass."""
     from imgutils.detect import detect_halfbody
     from imgutils.ocr import ocr
     from imgutils.tagging import get_wd14_tags
@@ -239,7 +216,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
     check_overwrite(project, name, overwrite)
     if sorted_dir.exists():
         shutil.rmtree(sorted_dir)
-        shutil.rmtree(out_dir / "_deleted", ignore_errors=True)  # review trash belongs to the old build
+        shutil.rmtree(out_dir / "_deleted", ignore_errors=True)
 
     cache = CropCache(project, fresh)
     try:
@@ -278,7 +255,6 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
                 fmt=("rating", "general", "character", "embedding"))
             return rating, general, emb
 
-        # frames and crops are only opened when something about them isn't in the cache yet
         n_new = 0
         for fi in tqdm(sorted(chosen), desc="  crop+tag", unit="f"):
             check_cancel()
@@ -290,8 +266,6 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
                                  min_size)
             crop = functools.cache(lambda t: frame().crop(boxes[t]))
             recs = {t: entry["crops"].setdefault(t, {}) for t in boxes}
-            # half/head crops are cut out of the matched person box, but in fights that box can hold someone
-            # else's head, so check their identity too (wrong ones scored ~0.23+, right ones < 0.1 in tests)
             sub = [t for t in boxes if t != "full"]
             missing = [t for t in sub if "ccip" not in recs[t]]
             if missing:
@@ -346,7 +320,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
         meta, dist, n_review, n_up, stems, embs, ccips = [], Counter(), 0, 0, [], [], []
         open_key = open_img = None
 
-        def frame_img(fr):  # items are sorted by frame, so neighbours often share one
+        def frame_img(fr):
             nonlocal open_key, open_img
             if open_key != fr["file"]:
                 open_key, open_img = fr["file"], Image.open(project.path(fr["file"])).convert("RGB")
@@ -382,12 +356,10 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
                          "t": fr["t"], "type": it["type"], "ccip": it["score"], "how": it["how"],
                          "sharp": round(it["sharp"], 1), "framing": framing, "view": view, "caption": caption,
                          "upscaled": round(factor, 2), "pose": pose})
-    finally:  # a stopped or failed build keeps what it analysed, so the next one starts from there
+    finally:
         cache.save()
 
-    # WD14 embeddings of the kept images: used by export to pick a varied subset
     np.savez_compressed(out_dir / "emb.npz", stems=np.array(stems), emb=np.stack(embs).astype(np.float16))
-    # CCIP of the kept images and the references: review uses them to find images like a rejected one
     np.savez_compressed(out_dir / negatives.FEATS, stems=np.array(stems), feats=np.stack(ccips), refs=refs)
     project.save(f"characters/{out_dir.name}/build.json",
                  {"name": name, "series": series, "clusters": cluster_ids,
@@ -418,7 +390,7 @@ def make_report(name, keep, core, dist, n_review, n_frames, n_track, dropped, be
     lines = [f"Character: {name}",
              f"Frames matched: {n_frames} ({n_track} via shot tracking) at threshold {threshold}",
              f"Best CCIP score per frame (lower = more alike): {score_histogram(best_scores)}",
-             f"Dropped crops: " + (", ".join(f"{v} {k}" for k, v in dropped.items() if v) or "-"),
+             "Dropped crops: " + (", ".join(f"{v} {k}" for k, v in dropped.items() if v) or "-"),
              f"Images written: {len(keep)}  ({n_review} placed in _review for a manual check)",
              f"Upscaled with the anime model to ~{upscale_to}px: {n_up} (min crop size {min_size}px)"
              if upscale_to else f"Upscaling: off (min crop size {min_size}px)",

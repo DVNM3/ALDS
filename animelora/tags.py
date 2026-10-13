@@ -1,5 +1,3 @@
-"""Bulk caption editing for one character: tag statistics, remove / replace / add across every caption,
-with a snapshot taken before each edit so it can be undone."""
 import json
 import time
 from collections import Counter
@@ -23,7 +21,6 @@ def tag_counts(char_dir: Path):
 
 
 def _snapshot(char_dir: Path, files):
-    """Saved by file name, not path, so undo still works after images were moved between folders in review."""
     hist = char_dir / "_caption_history"
     hist.mkdir(exist_ok=True)
     data = {f.name: f.read_text(encoding="utf-8") for f in files}
@@ -34,8 +31,6 @@ def _snapshot(char_dir: Path, files):
 
 
 def edit_tags(char_dir: Path, remove=(), replace=None, add=()) -> int:
-    """remove: tags to drop everywhere; replace: {old: new} where new may hold several tags ("a, b") or be
-    empty (= remove); add: tags appended to every caption that lacks them. Returns the number of files changed."""
     files = caption_files(char_dir)
     remove = {t.strip() for t in remove if t.strip()}
     replace = {k.strip(): v for k, v in (replace or {}).items() if k.strip()}

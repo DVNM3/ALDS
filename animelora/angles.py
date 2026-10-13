@@ -1,20 +1,11 @@
-"""Head turn estimate: front vs three-quarter, from where the eyes sit inside the detected face.
-
-WD14 tags already say from side / from behind / from above / from below, but nothing separates a frontal
-face from a three-quarter one, which is what makes a character LoRA usable from slight angles.
-"""
 from .common import box_area, expand_box
 
-# Calibrated on 31 Fairy Tail faces: frontal ones had eye-width ratio 0.82-0.98 and offset <= 0.07,
-# three-quarter ones ratio 0.52-0.76 or offset >= 0.08.
-THREE_QUARTER_OFFSET = 0.10  # |eye midpoint - face centre| / face width
-EYE_WIDTH_RATIO = 0.78       # in a turned face the far eye looks narrower
-# a single detected eye usually means a turned face, unless the other one is closed or hidden
+THREE_QUARTER_OFFSET = 0.10
+EYE_WIDTH_RATIO = 0.78
 ONE_EYE_TAGS = ("one eye closed", "hair over one eye", "eyepatch", "one eye covered", "covering one eye")
 
 
 def face_pose(frame_img, head_box, detect_faces, detect_eyes):
-    """-> {"eyes": n, "offset": signed float, "ratio": narrow/wide eye} or None when no face is found."""
     if not head_box:
         return None
     W, H = frame_img.size

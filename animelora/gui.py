@@ -1,9 +1,3 @@
-"""Gradio GUI over the CLI stages: scan -> pick -> review -> tags -> save.
-
-Two pages of one app, one per language: Arabic (right-to-left) at "/" and English at "/en", with a navbar to
-switch. The texts here are English and go through i18n.t(); i18n.AR translates them. The page you open last is
-remembered and opened on the next launch.
-"""
 import contextlib
 import io
 import os
@@ -18,13 +12,11 @@ from PIL import Image
 
 from . import cancel, txn
 from .cancel import Cancelled
-from .common import PROJECTS_DIR, Project, parse_ranges, safe_name
+from .common import PROJECTS_DIR, Project, mmss, parse_ranges, safe_name
 from .i18n import AR, LANGS, bound, lang, t, use
 
 
 def ltr(text) -> str:
-    """Keep an English word, name, path or number as one left-to-right piece inside Arabic text: without the
-    isolate, neutral characters at its edges (e.g. the _ of _dropped, a final period) jump to the other side."""
     return f"\u2066{text}\u2069"
 
 
@@ -54,28 +46,20 @@ def build_options():
 
 
 CSS = """
-/* Gradio marks every component dir="ltr" unless it gets rtl=True; on the Arabic page (html dir="rtl", set by HEAD)
-   that put Arabic text with English words or parentheses in a left-to-right order */
 html[dir="rtl"] .gradio-container, html[dir="rtl"] .gradio-container [dir="ltr"] { direction: rtl; }
-/* table cells (Gradio draws them as div.body-cell, aligned left) and image captions hold English tags and names
-   as often as Arabic: aligned like the headers, each one in the direction of its own first letter */
 html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container .body-cell .text { text-align: right; }
 .gradio-container .body-cell .text, .gradio-container .caption-label { unicode-bidi: plaintext; }
 input[type=range] { direction: ltr; }
 .ltr textarea, .ltr input { direction: ltr !important; text-align: left !important; }
 #log textarea { direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 12px; }
 #preview img { object-fit: contain; }
-/* the word on top of a message, and on a component whose update failed, is Gradio's own fixed English one:
-   show it in Arabic there */
 html[lang="ar"] .toast-title, html[lang="ar"] .wrap.default > span.error { font-size: 0; }
 html[lang="ar"] .toast-title::before, html[lang="ar"] .wrap.default > span.error::before { font-size: 16px; }
 html[lang="ar"] .wrap.default > span.error::before { content: "%s"; }
 """ % AR["Error"] + "".join(f'html[lang="ar"] .toast-title.{kind}::before {{ content: "{AR[word]}"; }}\n'
                             for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info")))
-# The page direction follows its language (the English page lives at /en), also after the navbar switches pages.
-# Review shortcuts only fire when the button is visible (its tab is open) and the user isn't typing; the arrow
-# keys follow the reading direction.
-HEAD = """<script>
+
+HEAD ="""<script>
 const setDir = () => {
   const en = /\\/en\\/?$/.test(location.pathname);
   document.documentElement.dir = en ? 'ltr' : 'rtl';
@@ -101,8 +85,6 @@ document.addEventListener('keydown', (e) => {
 </script>"""
 
 
-# ---------- helpers ----------
-
 def projects():
     return sorted(p.name for p in PROJECTS_DIR.iterdir() if p.is_dir()) if PROJECTS_DIR.exists() else []
 
@@ -120,7 +102,6 @@ def characters(pname):
     return sorted(p.name for p in d.iterdir() if (p / "sorted").exists()) if d.exists() else []
 
 
-# hints for the pipeline's (English) error messages, matched by substring
 ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
                ("already exists", "There are results with this name already. Tick “Replace earlier results” to "
                                   "build it again, or pick another name"),
@@ -141,12 +122,10 @@ ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
 def gui_error(e: SystemExit):
     msg = str(e) or "failed"
     hint = next((h for key, h in ERROR_HINTS if key in msg), None)
-    return gr.Error(f"{t(hint)}\n\n{ltr(msg)}" if hint else ltr(msg))  # the pipeline's own messages are English
+    return gr.Error(f"{t(hint)}\n\n{ltr(msg)}" if hint else ltr(msg))
 
 
 def captured(fn, *args, txn=None):
-    """Run a pipeline stage, return what it printed; its SystemExit messages become GUI errors.
-    txn: a txn.Transaction - if the stage is stopped or fails, what it generated is removed."""
     buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(buf):
@@ -162,10 +141,6 @@ def captured(fn, *args, txn=None):
         raise gui_error(e)
     return buf.getvalue()
 
-
-# ---------- stop buttons ----------
-# Every long action shows its own stop button while it runs. Pressing it sets the cancel flag; the pipeline
-# stops at its next frame/image and the action's Transaction removes what it had generated.
 
 def stop_label():
     return t("⏹ Stop and remove what it made")
@@ -185,19 +160,13 @@ def press_stop():
     return gr.update(value=t("⏳ Stopping and undoing..."), interactive=False)
 
 
-def _mmss(sec):
-    m, s = divmod(int(sec), 60)
-    return f"{m}:{s:02d}"
-
-
 def videos_table(pname):
     if not pname:
         return []
     proj = Project(safe_name(pname)).load("project.json", {"videos": []})
     rows = []
     for v in proj["videos"]:
-        # kept all-Latin ("OP 0:30–2:02 | ED 22:00–24:21"): mixing Arabic words with times scrambled on wrap
-        segs = " | ".join(f"{lab} {_mmss(s)}–{_mmss(e)}" for s, e, lab in v.get("auto_skip", []))
+        segs = " | ".join(f"{lab} {mmss(s)}–{mmss(e)}" for s, e, lab in v.get("auto_skip", []))
         segs = ltr(segs) if segs else "—"
         rows.append([v["id"], v["name"], round(v.get("duration", 0) / 60, 1), v.get("kept_frames", 0), segs])
     return rows
@@ -227,8 +196,6 @@ def load_project(pname):
             gr.update(choices=chars, value=first), gr.update(choices=chars, value=first),
             gr.update(choices=chars, value=first), usage_md(pname))
 
-
-# ---------- tab 1: scan ----------
 
 def do_scan(pname, videos_text, skip_text, auto, auto_min, min_gap, keep_diff,
             progress=gr.Progress(track_tqdm=True)):
@@ -312,8 +279,6 @@ def do_clean(pname, all_frames, confirm):
     return log, usage_md(pname)
 
 
-# ---------- tab 2: pick + build ----------
-
 def pick_cluster(pname, selected, evt: gr.SelectData):
     p = need_project(pname)
     c = p.load("scan/clusters.json")["clusters"][evt.index]
@@ -335,7 +300,7 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
     if not ids and not ref_files:
         raise gr.Error(t("Pick at least one cluster of images, or upload reference images"))
     try:
-        check_overwrite(p, name, overwrite)  # before the undo snapshot, which moves the old sorted/ aside
+        check_overwrite(p, name, overwrite)
     except SystemExit as e:
         raise gui_error(e)
     ref_dir = p.dir / "refs" / safe_name(name) if ref_files else None
@@ -360,8 +325,6 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
             gr.update(choices=chars, value=char), gr.Tabs(selected="review"))
 
 
-# ---------- tab 3: review ----------
-
 def sorted_root(pname, char):
     return Project(safe_name(pname)).chars_dir / char / "sorted"
 
@@ -379,8 +342,6 @@ _alike_cache = {}
 
 
 def look_alikes(pname, char):
-    """{image name: margin} of images that look like one rejected as another character (negatives.py),
-    recomputed only when the rejections or the build change."""
     from . import negatives
     char_dir = sorted_root(pname, char).parent
     key = tuple((char_dir / f).stat().st_mtime_ns if (char_dir / f).exists() else 0
@@ -398,7 +359,7 @@ def list_files(pname, char, flt):
     files.sort(key=lambda f: (not is_review(root, f), group_of(root, f), f.name))
     if flt == "_review":
         files = [f for f in files if is_review(root, f)]
-    elif flt == "_alike":  # most alike first
+    elif flt == "_alike":
         alike = look_alikes(pname, char)
         files = sorted((f for f in files if f.stem in alike), key=lambda f: -alike[f.stem])
     elif flt and flt.startswith("outfit:"):
@@ -458,13 +419,11 @@ def gallery_items(pname, char, files):
         return []
     root = sorted_root(pname, char)
     alike = look_alikes(pname, char)
-    # full labels don't fit on thumbnails; the side panel shows them, the grid only flags images to check
     return [(str(thumb(root.parent, f)), "🚫" if f.stem in alike else "⚠" if is_review(root, f) else None)
             for f in map(Path, files)]
 
 
 def panel(pname, char, files, idx):
-    """Large preview, caption and info line for files[idx]."""
     if not files:
         return None, "", t("No images here.")
     f = Path(files[idx])
@@ -559,7 +518,6 @@ def filter_update(pname, char, flt):
 
 
 def delete_image(pname, char, flt, files, idx, undo):
-    """A bad image of the right character: removed, nothing is learned."""
     if not files:
         raise gr.Error(t("No image selected"))
     undo = _trash(pname, char, files, idx, undo, "delete")
@@ -568,8 +526,6 @@ def delete_image(pname, char, flt, files, idx, undo):
 
 
 def reject_image(pname, char, flt, files, idx, undo):
-    """Another character: removed, and learned as a negative (negatives.py) - review points at the images that
-    look like it, and every later build leaves such crops out."""
     from . import negatives
     if not files:
         raise gr.Error(t("No image selected"))
@@ -627,14 +583,11 @@ def save_caption(files, idx, caption):
     gr.Info(t("Caption saved"))
 
 
-# ---------- tab 4: bulk tag editor ----------
-
 def char_dir_of(pname, char):
     return Project(safe_name(pname)).chars_dir / char
 
 
 def _tag_state(pname, char, query=""):
-    """-> table rows, status markdown, all tags"""
     from .tags import history_size, tag_counts
     if not pname or not char or not (char_dir_of(pname, char) / "sorted").exists():
         return [], t("Pick a built character."), []
@@ -715,13 +668,7 @@ def rerun_outfits(pname, char, query):
     return (*tag_view(pname, char, query), log)
 
 
-# ---------- tab 5: save the result ----------
-# Only three things: where the finished images + captions go, a summary of them, and deleting the project
-# from the program folder once it's saved. (The CLI's `export` still has balancing and AI Toolkit configs.)
-
-def save_target(pname, char, parent):
-    """The folder the images go to: <chosen place>/<character>. Refuses places inside the projects folder,
-    which deleting the project would take with it."""
+def save_target(char, parent):
     parent = (parent or "").strip().strip('"').strip("'")
     if not parent:
         raise gr.Error(t("Type or paste the path of the place to save in"))
@@ -736,7 +683,6 @@ def save_target(pname, char, parent):
 
 
 def save_summary(pname, char, parent):
-    """-> (summary markdown, rows: shot, angle, count) of what saving will write."""
     from .export import group_of as export_group
     if not pname or not char:
         return t("Pick a character."), []
@@ -770,7 +716,7 @@ def save_summary(pname, char, parent):
     if n_txt < len(files):
         lines.append(t("- ⚠ {n} images have no caption file.", n=len(files) - n_txt))
     try:
-        lines.append("\n" + t("**Saving to:** `{path}`", path=save_target(pname, char, parent)))
+        lines.append("\n" + t("**Saving to:** `{path}`", path=save_target(char, parent)))
     except gr.Error:
         pass
     counts = Counter(export_group(root, f) for f in files)
@@ -788,7 +734,7 @@ def do_save(pname, char, parent):
     p = need_project(pname)
     if not char:
         raise gr.Error(t("Pick the character"))
-    out = save_target(pname, char, parent)
+    out = save_target(char, parent)
     if out.exists() and any(out.iterdir()) and not (out / MARKER).exists():
         raise gr.Error(t("There is a folder named {name} in that place that the program didn't make, so it won't "
                          "be overwritten. Pick another place.", name=out.name))
@@ -801,7 +747,6 @@ def do_save(pname, char, parent):
 
 
 def delete_hint(pname):
-    """What deleting the project would remove, and whether anything of it was saved elsewhere first."""
     from .cleanup import disk_usage, fmt_bytes
     if not pname or not Project(safe_name(pname)).dir.exists():
         return ""
@@ -841,27 +786,19 @@ def remember_language():
     save_settings(ui_lang=lang())
 
 
-# ---------- layout ----------
-
 def build_ui():
     import onnxruntime as ort
     gpu = "CUDAExecutionProvider" in ort.get_available_providers()
-    with gr.Blocks(title="animelora", analytics_enabled=False) as demo:
+    with gr.Blocks(title="animelora", analytics_enabled=False) as demo, use("ar"):
         build_page(demo, "ar", gpu)
-    with demo.route(LANGS["en"], "en"):
+    with demo.route(LANGS["en"], "en"), use("en"):
         build_page(demo, "en", gpu)
     return demo
 
 
 def build_page(demo, language, gpu):
-    """The whole interface in one language, inside the current page of `demo`."""
-    with use(language):
-        _build_page(demo, language, gpu)
-
-
-def _build_page(demo, language, gpu):
     from .aitk import load_settings
-    L = lambda fn: bound(language, fn)  # every event handler runs in this page's language
+    L = lambda fn: bound(language, fn)
     gr.Navbar(main_page_name=LANGS["ar"])
     gr.Markdown("## " + t("animelora — LoRA datasets of a character from anime episodes") + "\n"
                 + (t("🟢 The graphics card is used (CUDA)") if gpu else t("🔴 Running on the CPU only (slow)")))
@@ -871,7 +808,6 @@ def _build_page(demo, language, gpu):
         refresh = gr.Button(t("🔄 Refresh"), scale=1)
 
     with gr.Tabs() as tabs:
-        # --- 1
         with gr.Tab(t("1. Scan episodes"), id="scan"):
             gr.Markdown(t("Paste one episode path per line, or the path of a whole folder. "
                           "(In Windows Explorer: Shift + right-click the file → Copy as path)"))
@@ -910,7 +846,6 @@ def _build_page(demo, language, gpu):
                         clean_all_btn = gr.Button(t("Delete all frames"), variant="stop")
             scan_log = gr.Textbox(lines=12, label=t("Log"), elem_id="log", autoscroll=True)
 
-        # --- 2
         with gr.Tab(t("2. Pick the character"), id="pick"):
             gr.Markdown(t("Click a character's image to select it, click again to unselect. If the character shows up "
                           "in more than one cluster (another outfit, say), pick all of them. **The numbers change "
@@ -966,7 +901,6 @@ def _build_page(demo, language, gpu):
                     stop_build = gr.Button(stop_label(), variant="stop", visible=False)
             build_log = gr.Textbox(lines=14, label=t("Report"), elem_id="log")
 
-        # --- 3
         with gr.Tab(t("3. Review"), id="review"):
             gr.Markdown(t("Remove every image that isn't the character, starting with the ones marked ⚠. **N** (not "
                           "this character): an image of another character - the program learns from it, marks what "
@@ -999,7 +933,6 @@ def _build_page(demo, language, gpu):
                     forget_btn = gr.Button(t("Forget all images rejected as another character"), size="sm")
             files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
 
-        # --- 4
         with gr.Tab(t("4. Tags"), id="tags"):
             gr.Markdown(t("All tags in the character's captions and how often they appear. Click a tag in the table "
                           "to select it, then remove or replace it in **all** captions at once. Every change can be "
@@ -1029,7 +962,6 @@ def _build_page(demo, language, gpu):
                     t_outfits_btn = gr.Button(t("🧥 Separate the outfits again"))
                     t_log = gr.Textbox(lines=4, label=t("Log"), elem_id="log")
 
-        # --- 5
         with gr.Tab(t("5. Save the result"), id="export"):
             gr.Markdown(t("Saves the reviewed images with their captions in a folder named after the character, inside "
                           "the place you choose. That folder is the dataset you train on."))
@@ -1052,13 +984,11 @@ def _build_page(demo, language, gpu):
                 del_confirm = gr.Checkbox(label=t("I understand deleting the project is final and can't be undone"))
                 del_project_btn = gr.Button(t("🗑 Delete the project"), variant="stop")
 
-    # ---- events ----
     proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
     project.change(L(load_project), project, proj_outputs)
     refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project, [project, *proj_outputs])
 
     def init_page(p):
-        """The project list is read again on every page load (projects made after the server started)."""
         names = projects()
         p = p if p in names else (names[0] if names else p)
         return (gr.update(choices=names, value=p), *load_project(p))
@@ -1067,10 +997,7 @@ def _build_page(demo, language, gpu):
     demo.load(L(remember_language), None, None)
 
     def long_action(btn, stop, fn, inputs, outputs):
-        """btn shows `stop` while fn runs; fn's event is returned so .success() can chain on it."""
         ev = btn.click(L(start_ui), None, stop, queue=False).then(L(fn), inputs, outputs, concurrency_id="gpu")
-        # Gradio 6's frontend fires .then() follow-ups only after success (despite its docs), and only
-        # .failure() ones after an error - a stopped run ends in an error, so hide the button on both
         ev.then(end_ui, None, stop, queue=False)
         ev.failure(end_ui, None, stop, queue=False)
         return ev
@@ -1087,7 +1014,6 @@ def _build_page(demo, language, gpu):
     clean_safe_btn.click(L(lambda p: do_clean(p, False, False)), project, [scan_log, usage])
     clean_all_btn.click(L(lambda p, c: do_clean(p, True, c)), [project, clean_confirm], [scan_log, usage])
     clusters_gal.select(L(pick_cluster), [project, chosen], [chosen, sheet])
-    # upscaling makes small crops usable, so allow smaller ones in when it's switched on
     upscale_on.change(lambda on: (gr.update(visible=on), gr.update(value=320 if on else 448)),
                       upscale_on, [upscale_to, min_size])
     long_action(build_btn, stop_build, do_build,
@@ -1143,6 +1069,6 @@ def launch(port=7860, open_browser=True):
     demo.queue(default_concurrency_limit=1).launch(
         server_name="127.0.0.1", server_port=port, inbrowser=False, prevent_thread_lock=True,
         allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS, head=HEAD)
-    if open_browser:  # the language used last
+    if open_browser:
         webbrowser.open(f"http://127.0.0.1:{port}/" + ("en" if load_settings().get("ui_lang") == "en" else ""))
     demo.block_thread()

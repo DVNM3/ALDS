@@ -1,8 +1,3 @@
-"""Tag post-processing for Anima: classification by framing/view, core-tag pruning, caption assembly.
-
-Anima caption rules (circlestone-labs/Anima model card): lowercase tags, spaces instead of
-underscores, order = [quality/meta/safety] [1girl/1boy...] [character] [series] [artist] [general].
-"""
 import re
 from collections import Counter
 
@@ -26,7 +21,7 @@ CORE_EXACT = {"ahoge", "bangs", "blunt bangs", "swept bangs", "parted bangs", "a
               "animal ears", "cat ears", "fox ears", "wolf ears", "dog ears", "rabbit ears", "horns", "tail",
               "cat tail", "fox tail", "wolf tail", "facial mark", "flat chest", "small breasts", "medium breasts",
               "large breasts", "huge breasts", "facial hair", "beard", "mustache", "stubble"}
-CORE_FREQ = 0.2  # a candidate tag must appear in at least this share of images to be treated as "part of the character"
+CORE_FREQ = 0.2
 
 FRAMING_TAGS = [("full body", "full_body"), ("cowboy shot", "cowboy_shot"), ("upper body", "upper_body"),
                 ("portrait", "close_up"), ("close-up", "close_up")]
@@ -47,7 +42,6 @@ def is_core_candidate(tag: str) -> bool:
 
 
 def find_core_tags(generals) -> set:
-    """Tags describing the character's fixed look (hair/eyes/body) that the trigger word should absorb."""
     n = len(generals)
     cnt = Counter(t for g in generals for t in g)
     return {t for t, c in cnt.items() if c / max(n, 1) >= CORE_FREQ and is_core_candidate(t)}
@@ -58,8 +52,6 @@ def rating_tag(rating: dict) -> str:
 
 
 def classify(crop_type: str, general: dict, portrait: str, pose=None):
-    """portrait: imgutils anime_portrait class (head/halfbody/person), used when no framing tag fired.
-    pose: angles.face_pose result, separates three-quarter from front."""
     from .angles import is_three_quarter
     if crop_type == "head":
         framing = "close_up"

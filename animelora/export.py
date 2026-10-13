@@ -1,10 +1,3 @@
-"""Stage 4: flatten the (reviewed) sorted folders into one AI Toolkit dataset folder: image + same-name .txt.
-
-Optional balancing: `total` spreads a target image count over the framing/view groups in proportion to the
-square root of their size (big groups shrink the most, rare ones are mostly kept), and `max_per_group` caps
-each group. Inside a
-group the pick favours varied but typical images (facility location on WD14 embeddings, weighted by sharpness).
-"""
 import shutil
 from collections import defaultdict
 from pathlib import Path
@@ -12,18 +5,16 @@ from pathlib import Path
 import numpy as np
 
 from .cancel import check as check_cancel
+from .common import safe_name
 
 
 def group_of(sorted_dir: Path, png: Path) -> str:
     parts = png.parent.relative_to(sorted_dir).parts
-    parts = parts[1:] if parts and parts[0] == "_review" else parts  # reviewed images count like the rest
+    parts = parts[1:] if parts and parts[0] == "_review" else parts
     return "/".join(parts)
 
 
 def water_fill(sizes: dict, total: int, power: float = 0.5) -> dict:
-    """Split `total` over groups in proportion to size**power, never past a group's size; what a small group
-    can't use goes to the others. power 0.5 sits between equal shares (rare back/side views would end up
-    over-represented) and keeping the original proportions (frontal shots dominate)."""
     quota = {g: 0 for g in sizes}
     remaining = min(total, sum(sizes.values()))
     while remaining > 0:
@@ -35,7 +26,6 @@ def water_fill(sizes: dict, total: int, power: float = 0.5) -> dict:
         ideal = {g: remaining * weight[g] / W for g in open_groups}
         alloc = {g: min(sizes[g] - quota[g], int(ideal[g])) for g in open_groups}
         left = remaining - sum(alloc.values())
-        # largest-remainder rounding, so leftovers don't all pile onto one group
         for g in sorted(open_groups, key=lambda g: ideal[g] - int(ideal[g]), reverse=True):
             if left and alloc[g] < sizes[g] - quota[g]:
                 alloc[g] += 1
@@ -44,22 +34,19 @@ def water_fill(sizes: dict, total: int, power: float = 0.5) -> dict:
             break
         for g, n in alloc.items():
             quota[g] += n
-        remaining = left  # > 0 only when capped groups couldn't take their share: redistribute
+        remaining = left
     return quota
 
 
 def select_diverse(files, k, sharp, emb):
-    """Greedy facility location on WD14 embeddings: each pick is the image that best covers the images not yet
-    covered, weighted by sharpness rank. Unlike farthest-point sampling (tried first: it preferred gag faces,
-    chibi shots and odd crops, i.e. outliers), an outlier only covers itself, so typical images win."""
     files = sorted(files, key=lambda p: -sharp.get(p.stem, 0))
     if k >= len(files):
         return files
     if any(p.stem not in emb for p in files):
         return files[:k]
     E = np.stack([emb[p.stem] for p in files])
-    S = (E @ E.T + 1) / 2                                  # similarity in [0, 1]
-    quality = 0.6 + 0.4 * np.linspace(1, 0, len(files))   # files are sorted sharpest first
+    S = (E @ E.T + 1) / 2
+    quality = 0.6 + 0.4 * np.linspace(1, 0, len(files))
     covered = np.zeros(len(files))
     chosen = []
     for _ in range(k):
@@ -72,7 +59,6 @@ def select_diverse(files, k, sharp, emb):
 
 
 def plan_export(project, name, total=None, max_per_group=None):
-    """-> {group: [all pngs]}, {group: [picked pngs]}"""
     char_dir = project.char_dir(name)
     sorted_dir = char_dir / "sorted"
     if not sorted_dir.exists():
@@ -99,8 +85,6 @@ def plan_export(project, name, total=None, max_per_group=None):
 
 
 def export_target(project, name, out=None, aitk=None) -> Path:
-    """Where the dataset goes: <AI Toolkit>/datasets/<name>, a chosen folder, or the character's train/."""
-    from .common import safe_name
     char_dir = project.char_dir(name)
     if aitk:
         root = Path(aitk["root"])
@@ -111,14 +95,12 @@ def export_target(project, name, out=None, aitk=None) -> Path:
 
 
 def run_export(project, name, out, max_per_group=None, total=None, aitk=None):
-    """aitk: None, or {"root": AI Toolkit folder, "dataset_name", "epochs", "resolutions", "job_name"} to export
-    straight into <root>/datasets/<dataset_name> and write a job config. Returns a summary dict."""
     from .aitk import MARKER, check_dataset_dir
     char_dir = project.char_dir(name)
     groups, picked = plan_export(project, name, total, max_per_group)
     out = export_target(project, name, out, aitk)
     if out != char_dir / "train":
-        check_dataset_dir(out)  # never wipe a folder animelora didn't create
+        check_dataset_dir(out)
     out.mkdir(parents=True, exist_ok=True)
     (out / MARKER).write_text("exported by animelora\n", encoding="utf-8")
     for old in list(out.glob("*.png")) + list(out.glob("*.txt")):
@@ -142,13 +124,11 @@ def run_export(project, name, out, max_per_group=None, total=None, aitk=None):
             print(f"   {g:<28} {len(picked[g]):>4} / {len(groups[g])}")
     if missing:
         print(f"[export] warning: {missing} images have no caption .txt")
-    result = {"out": str(out), "images": n}
     if aitk:
-        result.update(write_aitk_config(project, name, out, n, captions, aitk))
+        write_aitk_config(project, name, out, n, captions, aitk)
     else:
         print(f"\nAI Toolkit: point the dataset folder_path at\n  {out.as_posix()}\n"
               f"with caption extension 'txt'. The captions already contain the trigger '{name}'.")
-    return result
 
 
 def write_aitk_config(project, name, out, n_images, captions, aitk):
@@ -167,13 +147,11 @@ def write_aitk_config(project, name, out, n_images, captions, aitk):
         paths.append(root / "config" / f"{job}.yaml")
     for p in paths:
         p.write_text(text, encoding="utf-8")
-    notes = schedule_notes(sched)
     print(f"\n[aitk] job '{job}': {n_images} images x {len(sched['resolutions'])} resolutions "
           f"{sched['resolutions']}, {sched['epochs']} epochs")
     print(f"       steps {sched['steps']} | save/sample every {sched['save_every']} | keep {sched['keep']} "
           f"| batch 1 x GA {GA} | warmup 100")
-    for note in schedule_notes(sched, "en"):
+    for note in schedule_notes(sched):
         print("       " + note)
     print("[aitk] config written to:\n" + "\n".join(f"       {p}" for p in paths))
     print("       In AI Toolkit: new job -> Advanced (YAML) -> paste the file's content.")
-    return {"job": job, "schedule": sched, "notes": notes, "yaml": text, "config_paths": [str(p) for p in paths]}

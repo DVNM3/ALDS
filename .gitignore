@@ -1,13 +1,5 @@
-# Python environment (recreate with: py -3.12 -m venv .venv, then pip install -r requirements.txt)
 .venv/
 __pycache__/
 *.pyc
-
-# your data: extracted frames, builds, caches, undo snapshots (can be many GB)
 projects/
-
-# written by the program, specific to this machine (AI Toolkit folder)
 settings.json
-
-# local Claude Code preview configuration
-.claude/

@@ -1,13 +1,3 @@
-"""Stage 2: find every character in the kept frames, extract identity features, and cluster them
-so the user can point at "their" character by cluster number.
-
-Detection runs while the video is still decoding: each kept frame is searched for characters on worker
-threads, and one more thread puts the results together in frame order (ids, CCIP batches), so the output is
-the same as going through the frames one at a time. A frame is only kept on disk when it holds a character
-big enough to identify: build and the contact sheets never open the others (a quarter to a third of all
-frames). They stay in frames.json, so frame numbers and shots don't change. The per-frame work is mostly CPU (resizing a
-1080p frame for each detector), which releases the GIL; the detectors themselves take ~6-8 ms on the GPU.
-"""
 import queue
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -18,22 +8,18 @@ from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 
 from .cancel import check as check_cancel
-from .common import box_area, frame_in_use, inside_ratio
+from .common import VIDEO_EXTS, box_area, frame_in_use, inside_ratio
 from .extract import extract_frames, save_frame
 from .identity import ccip_features, ccip_matrix
 from .repeats import detect_repeats
 
-VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".avi", ".mov", ".m4v", ".ts"}
-MIN_REL_HEIGHT = 0.12  # person box height / frame height needed to bother identifying it
+MIN_REL_HEIGHT = 0.12
 MIN_SIDE_PX = 128
 FEAT_DIM = 768
-# Extract + detect of a 24-min 1080p episode on a 5800X + 5070 Ti: serial 293 s (6.4 GB VRAM peak); with
-# 2 / 3 / 4 threads 162 s (7.3 GB) / 144 s (8.2 GB) / 135 s (9.7 GB). Decoding alone takes 58 s. imgutils
-# loads its own copy of the detectors for every thread, so more threads cost VRAM for little gain.
 DETECT_WORKERS = 3
-IN_FLIGHT = 4 * DETECT_WORKERS  # decoded frames waiting for detection (bounds memory)
+IN_FLIGHT = 4 * DETECT_WORKERS
 CCIP_BATCH = 32
-_pool = None  # kept for the whole process: new threads would load new copies of the models
+_pool = None
 
 
 def _workers():
@@ -57,7 +43,6 @@ def expand_video_args(paths):
 
 
 def find_characters(img):
-    """[(person box, score, head box or None)]: each head goes to the person box that contains most of it."""
     from imgutils.detect import detect_heads, detect_person
 
     persons = detect_person(img, conf_threshold=0.35)
@@ -76,9 +61,6 @@ def find_characters(img):
 
 
 def _examine(frame, path):
-    """Worker thread: save the frame and detect on the saved JPEG (exactly what build will crop from later);
-    delete it again when no character in it is big enough to identify. (Encoding into memory instead and
-    writing only the useful ones was slower with 3 threads: PIL holds the GIL longer for in-memory files.)"""
     save_frame(frame, path)
     img = Image.open(path).convert("RGB")
     found = find_characters(img)
@@ -91,17 +73,14 @@ def _examine(frame, path):
 
 
 class FrameDetector:
-    """Detects characters in kept frames as extract_frames hands them over (`add` is its `keep` callback).
-    finish() -> (detections, CCIP features) of all frames, ids continuing from the given offsets."""
-
     def __init__(self, frame_offset, det_offset, feat_offset):
         self.frame_offset, self.det_offset, self.feat_offset = frame_offset, det_offset, feat_offset
         self.dets, self.feats, self.batch = [], [], []
         self.n_added = self.n_done = self.n_feat = 0
         self.error = None
         self.stopping = False
-        self.pending = queue.Queue()  # futures in frame order, None = no more frames
-        self.inflight = set()         # submitted, result not taken yet
+        self.pending = queue.Queue()
+        self.inflight = set()
         self.slots = threading.Semaphore(IN_FLIGHT)
         self.collector = threading.Thread(target=self._collect, name="detect-collect", daemon=True)
         self.collector.start()
@@ -139,9 +118,9 @@ class FrameDetector:
                 self.n_done += 1
             if not self.stopping:
                 self._flush()
-        except BaseException as e:  # incl. Cancelled from the stop button; add()/finish() re-raise it
+        except BaseException as e:
             self.error = e
-            self.slots.release()  # unblock add()
+            self.slots.release()
 
     def _flush(self):
         if self.batch:
@@ -160,8 +139,6 @@ class FrameDetector:
         return self.dets, F
 
     def abort(self):
-        """After an error or a stop: drop the queued frames and wait for the running ones, so nothing is
-        written into the frames folder after the undo has cleaned it up."""
         self.stopping = True
         futs = self.inflight.copy()
         for fut in futs:
@@ -227,14 +204,10 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
 
 
 def run_clusters(project, cut=0.2, min_size=8, max_samples=4000):
-    """Average-linkage clustering on the CCIP difference matrix. (OPTICS, imgutils' default, shattered
-    a test episode into 136 tiny clusters; average linkage at ~0.2 gave one cluster per main character.)"""
     from sklearn.cluster import AgglomerativeClustering
 
     project.require_frames()
     frames, dets, F = load_state(project)
-    # cluster only clear views (head visible, reasonably large) outside auto-detected OP/ED;
-    # build() matches everything else later
     cand = [d for d in dets if d["feat"] >= 0 and d["head"] is not None and d["rh"] >= 0.2
             and frame_in_use(frames[d["frame"]])]
     if len(cand) > max_samples:
@@ -261,12 +234,10 @@ def run_clusters(project, cut=0.2, min_size=8, max_samples=4000):
         vids = sorted({frames[dets[m]["frame"]]["vid"] for m in c["members"]})
         print(f"   #{c['id']:<3} {len(c['members']):>5} views   episodes: {', '.join(f'v{v:02d}' for v in vids)}")
     print(f"\nOpen  {project.clusters_dir / 'overview.jpg'}")
-    print(f"and pick the cluster number(s) of your character (a character can be split across several clusters).")
+    print("and pick the cluster number(s) of your character (a character can be split across several clusters).")
 
 
 def split_cluster(project, cid, cut=0.14, min_size=3):
-    """Re-cluster one mixed cluster at a tighter cut. The biggest part keeps the number, the others get new
-    numbers at the end, so the rest of the numbering doesn't move."""
     from sklearn.cluster import AgglomerativeClustering
 
     project.require_frames()
@@ -300,7 +271,6 @@ def split_cluster(project, cid, cut=0.14, min_size=3):
     n_lost = len(D) - sum(len(p) for p in parts)
     print(f"[split] #{cid} -> " + ", ".join(f"#{i} ({len(p)})" for i, p in zip(new_ids, parts))
           + (f"; {n_lost} stray views dropped" if n_lost else ""))
-    return new_ids
 
 
 def _thumb(project, frames, det, cell, cache):
@@ -322,8 +292,7 @@ def _thumb(project, frames, det, cell, cache):
     return crop
 
 
-def _spread(members, frames, dets, n):
-    """Pick up to n members spread over time so the sheet shows variety."""
+def _spread(members, dets, n):
     ms = sorted(members, key=lambda m: dets[m]["frame"])
     if len(ms) <= n:
         return ms
@@ -348,13 +317,12 @@ def contact_sheets(project, frames, dets, clusters, per_row=10, cell=(150, 200))
         d = ImageDraw.Draw(row)
         d.text((12, 20), f"#{c['id']}", fill=(255, 220, 90), font=font)
         d.text((12, 60), f"{len(c['members'])} views", fill=(200, 200, 200), font=small)
-        for k, m in enumerate(_spread(c["members"], frames, dets, per_row)):
+        for k, m in enumerate(_spread(c["members"], dets, per_row)):
             t = _thumb(project, frames, dets[m], cell, cache)
             row.paste(t, (label_w + k * (cw + pad) + (cw - t.width) // 2, pad + (ch - t.height) // 2))
         rows.append(row)
 
-        # a bigger sheet per cluster for a closer look
-        picks = _spread(c["members"], frames, dets, 40)
+        picks = _spread(c["members"], dets, 40)
         cols = 8
         sheet = Image.new("RGB", (cols * (cw + pad) + pad, ((len(picks) + cols - 1) // cols) * (ch + pad) + pad + 40), (32, 32, 36))
         ImageDraw.Draw(sheet).text((10, 6), f"Cluster #{c['id']} - {len(c['members'])} views", fill=(255, 220, 90), font=font)
@@ -365,10 +333,9 @@ def contact_sheets(project, frames, dets, clusters, per_row=10, cell=(150, 200))
             sheet.paste(t, (x, y))
         sheet.save(out / f"cluster_{c['id']:02d}.jpg", quality=88)
 
-        # a small 3x2 card for the GUI picker
         card = Image.new("RGB", (3 * (cw + pad) + pad, 2 * (ch + pad) + pad + 36), (32, 32, 36))
         ImageDraw.Draw(card).text((10, 4), f"#{c['id']}   {len(c['members'])}", fill=(255, 220, 90), font=font)
-        for k, m in enumerate(_spread(c["members"], frames, dets, 6)):
+        for k, m in enumerate(_spread(c["members"], dets, 6)):
             t = _thumb(project, frames, dets[m], cell, cache)
             card.paste(t, (pad + (k % 3) * (cw + pad) + (cw - t.width) // 2,
                            36 + pad + (k // 3) * (ch + pad) + (ch - t.height) // 2))

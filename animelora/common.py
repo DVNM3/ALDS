@@ -1,4 +1,3 @@
-"""Shared helpers: runtime setup, project layout, JSON I/O and box math."""
 import json
 import os
 import re
@@ -7,10 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PROJECTS_DIR = ROOT / "projects"
+VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".avi", ".mov", ".m4v", ".ts"}
 
 
 def setup_runtime():
-    """Quiet noisy libraries and make the pip-installed CUDA/cuDNN DLLs visible to ONNX Runtime."""
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     warnings.filterwarnings("ignore", category=UserWarning)
@@ -55,15 +54,12 @@ class Project:
         return self.chars_dir / safe_name(name)
 
     def require_frames(self):
-        """Extracted frames are needed to build or re-cluster; `clean --all` deletes them."""
         if self.load("project.json", {}).get("frames_deleted"):
             raise SystemExit("frames of this project were deleted to save space - scan the episodes "
                              "again in a new project to build or re-cluster")
 
 
 def frame_in_use(f) -> bool:
-    """Clustering and build skip frames inside an auto-detected OP/ED ("auto") and frames that would be used
-    but whose file `clean` deleted ("deleted", set by repeats.py when a frame leaves the OP/ED)."""
     return not f.get("auto") and not f.get("deleted")
 
 
@@ -72,7 +68,6 @@ def safe_name(s: str) -> str:
 
 
 def parse_time(s: str) -> float:
-    """'90', '1:30', '1:02:03' -> seconds."""
     parts = [float(p) for p in s.strip().split(":")]
     sec = 0.0
     for p in parts:
@@ -80,8 +75,12 @@ def parse_time(s: str) -> float:
     return sec
 
 
+def mmss(sec) -> str:
+    m, s = divmod(int(sec), 60)
+    return f"{m}:{s:02d}"
+
+
 def parse_ranges(specs):
-    """['0:00-1:30', '21:50-23:40'] or ['0:00-1:30,21:50-23:40'] -> [(0, 90), (1310, 1420)]."""
     out = []
     for spec in specs or []:
         for chunk in spec.split(","):
@@ -106,7 +105,6 @@ def box_iou(a, b):
 
 
 def inside_ratio(inner, outer):
-    """Fraction of `inner` box that lies inside `outer`."""
     ix0, iy0 = max(inner[0], outer[0]), max(inner[1], outer[1])
     ix1, iy1 = min(inner[2], outer[2]), min(inner[3], outer[3])
     inter = max(0, ix1 - ix0) * max(0, iy1 - iy0)
@@ -115,7 +113,6 @@ def inside_ratio(inner, outer):
 
 
 def expand_box(box, factor, W, H, square=False, shift_y=0.0):
-    """Grow a box around its center (optionally squared / shifted down by a fraction of its height), clamped to the frame."""
     x0, y0, x1, y1 = box
     w, h = x1 - x0, y1 - y0
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2 + shift_y * h

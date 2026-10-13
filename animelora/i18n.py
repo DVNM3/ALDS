@@ -1,12 +1,3 @@
-"""Interface languages. The GUI is written in English; AR below translates its texts to Arabic.
-
-The GUI is built once per language, as two pages of the same app ("/" Arabic, "/en" English). While a page is
-built, and while one of its event handlers runs, the page's language is the current one, so t() returns the
-right text without passing the language around. A text missing from AR shows in English.
-
-In Arabic, every value put into a text ({n}, a name, a path) is wrapped in a first-strong isolate, so numbers and
-English names keep their place in the right-to-left line.
-"""
 import contextlib
 import contextvars
 import functools
@@ -19,10 +10,6 @@ def lang() -> str:
     return _current.get()
 
 
-def is_rtl() -> bool:
-    return _current.get() == "ar"
-
-
 @contextlib.contextmanager
 def use(language):
     token = _current.set(language)
@@ -33,7 +20,6 @@ def use(language):
 
 
 def bound(language, fn):
-    """fn running in `language`; keeps fn's signature, which Gradio reads (gr.Progress, gr.SelectData)."""
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         with use(language):
@@ -49,7 +35,6 @@ def t(text: str, **values) -> str:
 
 
 AR = {
-    # ---- page, project ----
     "animelora — LoRA datasets of a character from anime episodes": "animelora — تجهيز صور LoRA لشخصية من حلقات الأنمي",
     "🟢 The graphics card is used (CUDA)": "🟢 كرت الشاشة يعمل (CUDA)",
     "🔴 Running on the CPU only (slow)": "🔴 يعمل على المعالج فقط (بطيء)",
@@ -59,14 +44,12 @@ AR = {
     "Stopped: everything it generated was removed, the project is back as it was.":
         "أُوقفت العملية، وحُذف كل ما ولّدته، فعاد المشروع كما كان قبلها.",
     "⏹ Stopped": "⏹ تم الإيقاف",
-    # Gradio's fixed message-type words, swapped in by CSS on the Arabic page
     "Error": "خطأ",
     "Warning": "تنبيه",
     "Info": "ملاحظة",
     "⏹ Stop and remove what it made": "⏹ إيقاف وحذف ما وُلّد",
     "⏳ Stopping and undoing...": "⏳ جارٍ الإيقاف والتراجع...",
 
-    # ---- hints for the pipeline's own (English) error messages ----
     "The file or folder doesn't exist": "الملف أو المجلد غير موجود",
     "There are results with this name already. Tick “Replace earlier results” to build it again, or pick another name":
         "توجد نتائج سابقة بهذا الاسم. فعّل «استبدال نتائج سابقة» لإعادة البناء، أو اختر اسمًا آخر",
@@ -83,7 +66,6 @@ AR = {
     "The cluster didn't split this strongly, lower “Split strength”": "لم تنقسم المجموعة بهذه الشدة، اخفض «شدة التقسيم»",
     "The cluster is too small to split": "المجموعة أصغر من أن تُقسم",
 
-    # ---- tab 1: scan ----
     "1. Scan episodes": "١. مسح الحلقات",
     "Paste one episode path per line, or the path of a whole folder. "
     "(In Windows Explorer: Shift + right-click the file → Copy as path)":
@@ -133,7 +115,6 @@ AR = {
     "Tick the confirmation first: deleting all frames is final and stops any rebuild":
         "فعّل خانة التأكيد أولًا: حذف كل الإطارات نهائي ويمنع إعادة البناء",
 
-    # ---- tab 2: pick + build ----
     "2. Pick the character": "٢. اختيار الشخصية",
     "Click a character's image to select it, click again to unselect. If the character shows up in more than one "
     "cluster (another outfit, say), pick all of them. **The numbers change after every scan.**":
@@ -188,7 +169,6 @@ AR = {
         "اختر مجموعة واحدة على الأقل من الصور، أو ارفع صورًا مرجعية",
     "Starting the build...": "بدء البناء...",
 
-    # ---- shot types, angles, crops ----
     "Close-up": "لقطة قريبة",
     "Upper body": "نصف علوي",
     "Cowboy shot": "حتى الفخذ",
@@ -202,7 +182,6 @@ AR = {
     "Whole character": "الشخصية كاملة",
     "Head": "الرأس",
 
-    # ---- tab 3: review ----
     "3. Review": "٣. المراجعة",
     "Remove every image that isn't the character, starting with the ones marked ⚠. **N** (not this character): "
     "an image of another character - the program learns from it, marks what looks like it with 🚫 and leaves it "
@@ -258,7 +237,6 @@ AR = {
     "Pick an image and the target group": "اختر صورة والمجلد المطلوب",
     "Caption saved": "تم حفظ الوصف",
 
-    # ---- tab 4: tags ----
     "4. Tags": "٤. الوسوم",
     "All tags in the character's captions and how often they appear. Click a tag in the table to select it, then "
     "remove or replace it in **all** captions at once. Every change can be undone.":
@@ -287,7 +265,6 @@ AR = {
     "No change to undo": "لا يوجد تعديل للتراجع عنه",
     "Restored {n} captions": "استُرجع {n} وصف",
 
-    # ---- tab 5: save the result ----
     "5. Save the result": "٥. حفظ الناتج",
     "Saves the reviewed images with their captions in a folder named after the character, inside the place you "
     "choose. That folder is the dataset you train on.":

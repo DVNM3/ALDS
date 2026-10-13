@@ -1,10 +1,5 @@
-"""CCIP character-identity features and distances (deepghs/imgutils).
-
-CCIP answers "are these two images the same anime character?". The difference model is
-pairwise-independent, so large matrices are computed in blocks to bound GPU memory.
-"""
 import numpy as np
-from imgutils.metrics import ccip_batch_differences, ccip_batch_extract_features, ccip_default_threshold
+from imgutils.metrics import ccip_batch_differences, ccip_batch_extract_features
 
 from .cancel import check as check_cancel
 
@@ -18,7 +13,6 @@ def ccip_features(images, batch=32) -> np.ndarray:
 
 
 def ccip_cross(A: np.ndarray, B: np.ndarray, block=1024) -> np.ndarray:
-    """CCIP difference between every row of A (n,d) and every row of B (m,d) -> (n,m). Lower = more alike."""
     out = np.empty((len(A), len(B)), np.float32)
     for i in range(0, len(A), block):
         a = A[i:i + block]
@@ -35,7 +29,3 @@ def ccip_matrix(F: np.ndarray) -> np.ndarray:
     D = (D + D.T) / 2
     np.fill_diagonal(D, 0)
     return np.clip(D, 0, None)
-
-
-def default_threshold() -> float:
-    return float(ccip_default_threshold())

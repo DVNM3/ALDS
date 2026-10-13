@@ -1,15 +1,3 @@
-"""Stage 1: decode a video and keep only frames that are visually new.
-
-Anime is drawn on 2s/3s and has long static holds, so instead of dumping every frame we compare a
-64x36 grayscale thumbnail of each frame with the last kept one. A frame is kept when it starts a new
-shot, or when it changed enough since the last kept frame of the same shot (and at least `min_gap`
-seconds passed). Flat frames (black/white flashes) and the first frames after a cut (often blended
-transitions) are dropped.
-
-Kept frames go to `keep(frame, path)`, which saves them. The scan passes one that hands the frame to
-character detection on other threads (so detection runs while the rest of the video is still decoding), and
-deletes the file again when there is no character in it that later stages could use.
-"""
 from pathlib import Path
 
 import av
@@ -46,7 +34,7 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
             check_cancel()
             t = float(frame.time) if frame.time is not None else n / fps
             thumb = frame.reformat(width=64, height=36, format="gray").to_ndarray().astype(np.float32)
-            fp.add(t, thumb)  # fingerprint the whole video, skipped ranges included (OP/ED detection)
+            fp.add(t, thumb)
             if any(a <= t < b for a, b in skip):
                 prev = None
                 continue

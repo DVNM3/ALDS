@@ -1,11 +1,3 @@
-"""Disk usage report and cleanup of regenerable data.
-
-safe: drop extracted frames nothing will ever read again (no identifiable character in them, or inside an
-      auto-detected OP/ED), thumbnails, the _dropped debug folders and cached crop images no build uses any
-      more. Builds and clusters keep working.
-all:  drop every extracted frame as well (plus review trash). The finished images stay, but the project can't
-      be rebuilt or re-clustered any more, so the saved crop analysis (cache/) goes too.
-"""
 import shutil
 from pathlib import Path
 
@@ -15,8 +7,6 @@ from .scan import load_state
 
 
 def disk_usage(project):
-    """[(label, bytes)] for the parts of a project. Cached crops are hard-linked into the builds (cache.py), so
-    a file with several names is counted once: under the first character that has it, else under the cache."""
     seen = set()
 
     def size(p: Path) -> int:
@@ -80,4 +70,3 @@ def clean(project, mode="safe"):
                 shutil.rmtree(c / name, ignore_errors=True)
     after = sum(b for _, b in disk_usage(project))
     print(f"[clean] {mode}: removed {removed_files} frames, freed {fmt_bytes(before - after)}")
-    return before - after
