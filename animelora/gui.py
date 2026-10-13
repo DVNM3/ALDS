@@ -1,4 +1,9 @@
-"""Gradio GUI (Arabic, right-to-left) over the CLI stages: scan -> pick -> review -> tags -> export."""
+"""Gradio GUI over the CLI stages: scan -> pick -> review -> tags -> save.
+
+Two pages of one app, one per language: Arabic (right-to-left) at "/" and English at "/en", with a navbar to
+switch. The texts here are English and go through i18n.t(); i18n.AR translates them. The page you open last is
+remembered and opened on the next launch.
+"""
 import contextlib
 import io
 import os
@@ -14,6 +19,8 @@ from PIL import Image
 from . import cancel, txn
 from .cancel import Cancelled
 from .common import PROJECTS_DIR, Project, parse_ranges, safe_name
+from .i18n import AR, LANGS, bound, lang, t, use
+
 
 def ltr(text) -> str:
     """Keep an English word, name, path or number as one left-to-right piece inside Arabic text: without the
@@ -21,43 +28,74 @@ def ltr(text) -> str:
     return f"\u2066{text}\u2069"
 
 
-FRAMING_AR = {"close_up": "لقطة قريبة", "upper_body": "نصف علوي", "cowboy_shot": "حتى الفخذ", "full_body": "جسم كامل"}
-VIEW_AR = {"front": "أمام", "three_quarter": "ثلاثة أرباع", "side": "جانب", "back": "خلف", "above": "من الأعلى",
-           "below": "من الأسفل"}
-TYPE_AR = {"full": "الشخصية كاملة", "half": "نصف علوي", "head": "الرأس"}
-BUILD_OPTIONS = [("فصل الأزياء تلقائيًا (وسم لكل زي بعد كلمة التفعيل)", "outfits"),
-                 ("وسم anime screencap في أول كل وصف", "screencap"),
-                 ("إبقاء صفات الشعر والعيون في الوصف", "keep_core"),
-                 ("إبقاء الصور التي فيها نصوص", "keep_text"),
-                 ("إبقاء الصور المزدحمة بشخصيات أخرى", "keep_crowded"),
-                 ("إبقاء الرسم المصغّر (chibi) والضبابي", "keep_offmodel"),
-                 (f"حفظ الصور المستبعدة في مجلد {ltr('_dropped')}", "save_dropped"),
-                 ("إعادة التحليل من الصفر وتجاهل المحفوظ (أبطأ بكثير، نادرًا ما تحتاجه)", "fresh")]
+FRAMING = {"close_up": "Close-up", "upper_body": "Upper body", "cowboy_shot": "Cowboy shot", "full_body": "Full body"}
+VIEW = {"front": "Front", "three_quarter": "Three-quarter", "side": "Side", "back": "Back", "above": "From above",
+        "below": "From below"}
+CROP = {"full": "Whole character", "half": "Upper body", "head": "Head"}
+
+
+def shot_name(key):
+    return t(FRAMING[key]) if key in FRAMING else key
+
+
+def angle_name(key):
+    return t(VIEW[key]) if key in VIEW else key
+
+
+def build_options():
+    return [(t("Separate outfits automatically (a tag per outfit after the trigger word)"), "outfits"),
+            (t("Put anime screencap at the start of every caption"), "screencap"),
+            (t("Keep hair and eye tags in the captions"), "keep_core"),
+            (t("Keep images with text on screen"), "keep_text"),
+            (t("Keep images crowded with other characters"), "keep_crowded"),
+            (t("Keep chibi and blurry drawings"), "keep_offmodel"),
+            (t("Save the left-out images in a {folder} folder", folder="_dropped"), "save_dropped"),
+            (t("Analyse from scratch, ignore the saved analysis (much slower, rarely needed)"), "fresh")]
+
 
 CSS = """
-.gradio-container { direction: rtl; }
-/* Gradio marks every component dir="ltr" unless it gets rtl=True, which put Arabic text with English words or
-   parentheses in a left-to-right order (the title read backwards). The whole interface is Arabic. */
-.gradio-container [dir="ltr"] { direction: rtl; }
+/* Gradio marks every component dir="ltr" unless it gets rtl=True; on the Arabic page (html dir="rtl", set by HEAD)
+   that put Arabic text with English words or parentheses in a left-to-right order */
+html[dir="rtl"] .gradio-container, html[dir="rtl"] .gradio-container [dir="ltr"] { direction: rtl; }
 /* table cells (Gradio draws them as div.body-cell, aligned left) and image captions hold English tags and names
-   as often as Arabic: right-aligned like the headers, each one in the direction of its own first letter */
-.gradio-container .body-cell, .gradio-container .body-cell .text { text-align: right; }
+   as often as Arabic: aligned like the headers, each one in the direction of its own first letter */
+html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container .body-cell .text { text-align: right; }
 .gradio-container .body-cell .text, .gradio-container .caption-label { unicode-bidi: plaintext; }
 input[type=range] { direction: ltr; }
 .ltr textarea, .ltr input { direction: ltr !important; text-align: left !important; }
 #log textarea { direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 12px; }
 #preview img { object-fit: contain; }
-"""
-# Review shortcuts. Only fire when the button is visible (its tab is open) and the user isn't typing.
+/* the word on top of a message, and on a component whose update failed, is Gradio's own fixed English one:
+   show it in Arabic there */
+html[lang="ar"] .toast-title, html[lang="ar"] .wrap.default > span.error { font-size: 0; }
+html[lang="ar"] .toast-title::before, html[lang="ar"] .wrap.default > span.error::before { font-size: 16px; }
+html[lang="ar"] .wrap.default > span.error::before { content: "%s"; }
+""" % AR["Error"] + "".join(f'html[lang="ar"] .toast-title.{kind}::before {{ content: "{AR[word]}"; }}\n'
+                            for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info")))
+# The page direction follows its language (the English page lives at /en), also after the navbar switches pages.
+# Review shortcuts only fire when the button is visible (its tab is open) and the user isn't typing; the arrow
+# keys follow the reading direction.
 HEAD = """<script>
+const setDir = () => {
+  const en = /\\/en\\/?$/.test(location.pathname);
+  document.documentElement.dir = en ? 'ltr' : 'rtl';
+  document.documentElement.lang = en ? 'en' : 'ar';
+};
+setDir();
+window.addEventListener('popstate', setDir);
+for (const m of ['pushState', 'replaceState']) {
+  const orig = history[m];
+  history[m] = function () { const r = orig.apply(this, arguments); setDir(); return r; };
+}
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'textarea' || tag === 'input') return;
   const click = (id) => { const b = document.getElementById(id); if (b && b.offsetParent !== null) { b.click(); e.preventDefault(); } };
+  const rtl = document.documentElement.dir === 'rtl';
   if (e.key === 'Delete') click('btn-del');
   else if (e.code === 'KeyN' && !e.ctrlKey && !e.metaKey && !e.altKey) click('btn-reject');
-  else if (e.key === 'ArrowLeft') click('btn-next');
-  else if (e.key === 'ArrowRight') click('btn-prev');
+  else if (e.key === 'ArrowLeft') click(rtl ? 'btn-next' : 'btn-prev');
+  else if (e.key === 'ArrowRight') click(rtl ? 'btn-prev' : 'btn-next');
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { click('btn-undo'); click('btn-tag-undo'); }
 });
 </script>"""
@@ -71,7 +109,7 @@ def projects():
 
 def need_project(pname) -> Project:
     if not pname or not safe_name(pname):
-        raise gr.Error("اختر مشروعًا أو اكتب اسم مشروع جديد في الأعلى")
+        raise gr.Error(t("Pick a project or type a new project name at the top"))
     return Project(safe_name(pname))
 
 
@@ -82,30 +120,28 @@ def characters(pname):
     return sorted(p.name for p in d.iterdir() if (p / "sorted").exists()) if d.exists() else []
 
 
-# Arabic hints for the pipeline's (English) error messages, matched by prefix/substring
-ERRORS_AR = [("not found:", "الملف أو المجلد غير موجود"),
-             ("already exists", "توجد نتائج سابقة بهذا الاسم. فعّل «استبدال نتائج سابقة» لإعادة البناء، "
-                                "أو اختر اسمًا آخر"),
-             ("no matches", "لم يُعثر على الشخصية. ارفع «حد التطابق» قليلًا أو اختر مجموعات أخرى"),
-             ("no characters detected", "لم تُكتشف أي شخصيات في الحلقات"),
-             ("nothing scanned yet", "امسح حلقة واحدة على الأقل أولًا (التبويب ١)"),
-             ("no clusters yet", "امسح حلقة واحدة على الأقل أولًا (التبويب ١)"),
-             ("does not exist", "رقم مجموعة غير موجود. الأرقام تتغير بعد كل مسح، حدّث الصفحة"),
-             ("no images in", "لا توجد صور في المراجع المرفوعة"),
-             ("not enough clear", "لا توجد مشاهد واضحة كافية للتجميع"),
-             ("were deleted to save space", "إطارات هذا المشروع حُذفت لتوفير المساحة. لبناء شخصية جديدة امسح الحلقات "
-                                            "في مشروع جديد"),
-             ("didn't split", "لم تنقسم المجموعة بهذه الشدة، اخفض «شدة التقسيم»"),
-             ("too small to split", "المجموعة أصغر من أن تُقسم"),
-             ("was not made by animelora", "يوجد مجلد بيانات بهذا الاسم في AI Toolkit لم يُنشئه البرنامج، "
-                                           "ولن يُستبدل. اختر اسم مجلد بيانات آخر"),
-             ("AI Toolkit folder not found", "مجلد AI Toolkit غير صحيح: يجب أن يحتوي على مجلد datasets")]
+# hints for the pipeline's (English) error messages, matched by substring
+ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
+               ("already exists", "There are results with this name already. Tick “Replace earlier results” to "
+                                  "build it again, or pick another name"),
+               ("no matches", "The character wasn't found. Raise “Match threshold” a little or pick other clusters"),
+               ("no characters detected", "No characters were found in the episodes"),
+               ("nothing scanned yet", "Scan at least one episode first (tab 1)"),
+               ("no clusters yet", "Scan at least one episode first (tab 1)"),
+               ("does not exist", "That cluster number doesn't exist. Numbers change after every scan, refresh "
+                                  "the page"),
+               ("no images in", "There are no images in the uploaded references"),
+               ("not enough clear", "Not enough clear views to cluster"),
+               ("were deleted to save space", "This project's frames were deleted to save space. To build a new "
+                                              "character, scan the episodes in a new project"),
+               ("didn't split", "The cluster didn't split this strongly, lower “Split strength”"),
+               ("too small to split", "The cluster is too small to split")]
 
 
 def gui_error(e: SystemExit):
     msg = str(e) or "failed"
-    hint = next((ar for key, ar in ERRORS_AR if key in msg), None)
-    return gr.Error(f"{hint}\n\n{ltr(msg)}" if hint else ltr(msg))  # the pipeline's own messages are English
+    hint = next((h for key, h in ERROR_HINTS if key in msg), None)
+    return gr.Error(f"{t(hint)}\n\n{ltr(msg)}" if hint else ltr(msg))  # the pipeline's own messages are English
 
 
 def captured(fn, *args, txn=None):
@@ -120,7 +156,8 @@ def captured(fn, *args, txn=None):
                 with txn:
                     fn(*args)
     except Cancelled:
-        raise gr.Error("أُوقفت العملية، وحُذف كل ما ولّدته، فعاد المشروع كما كان قبلها.", title="⏹ تم الإيقاف")
+        raise gr.Error(t("Stopped: everything it generated was removed, the project is back as it was."),
+                       title=t("⏹ Stopped"))
     except SystemExit as e:
         raise gui_error(e)
     return buf.getvalue()
@@ -130,12 +167,13 @@ def captured(fn, *args, txn=None):
 # Every long action shows its own stop button while it runs. Pressing it sets the cancel flag; the pipeline
 # stops at its next frame/image and the action's Transaction removes what it had generated.
 
-STOP_LABEL = "⏹ إيقاف وحذف ما وُلّد"
+def stop_label():
+    return t("⏹ Stop and remove what it made")
 
 
 def start_ui():
     cancel.reset()
-    return gr.update(visible=True, value=STOP_LABEL, interactive=True)
+    return gr.update(visible=True, value=stop_label(), interactive=True)
 
 
 def end_ui():
@@ -144,7 +182,7 @@ def end_ui():
 
 def press_stop():
     cancel.request()
-    return gr.update(value="⏳ جارٍ الإيقاف والتراجع...", interactive=False)
+    return gr.update(value=t("⏳ Stopping and undoing..."), interactive=False)
 
 
 def _mmss(sec):
@@ -160,7 +198,7 @@ def videos_table(pname):
     for v in proj["videos"]:
         # kept all-Latin ("OP 0:30–2:02 | ED 22:00–24:21"): mixing Arabic words with times scrambled on wrap
         segs = " | ".join(f"{lab} {_mmss(s)}–{_mmss(e)}" for s, e, lab in v.get("auto_skip", []))
-        segs = f"⁦{segs}⁩" if segs else "—"
+        segs = ltr(segs) if segs else "—"
         rows.append([v["id"], v["name"], round(v.get("duration", 0) / 60, 1), v.get("kept_frames", 0), segs])
     return rows
 
@@ -177,7 +215,7 @@ def clusters_view(pname):
         card = p.clusters_dir / f"card_{c['id']:02d}.jpg"
         if not card.exists():
             card = p.clusters_dir / f"cluster_{c['id']:02d}.jpg"
-        items.append((str(card), f"#{c['id']}  ·  {len(c['members'])} ظهور"))
+        items.append((str(card), t("{id}  ·  {n} views", id=f"#{c['id']}", n=len(c["members"]))))
     return items, [f"#{c['id']}" for c in data["clusters"]]
 
 
@@ -198,13 +236,13 @@ def do_scan(pname, videos_text, skip_text, auto, auto_min, min_gap, keep_diff,
     p = need_project(pname)
     paths = [l.strip().strip('"').strip("'") for l in (videos_text or "").splitlines() if l.strip()]
     if not paths:
-        raise gr.Error("أدخل مسار حلقة واحدة على الأقل أو مجلد حلقات")
+        raise gr.Error(t("Enter at least one episode path or a folder of episodes"))
     try:
         text = re.sub(r"\s*-\s*", "-", (skip_text or "").strip())
         skip = parse_ranges([s for s in re.split(r"[,\s]+", text) if s])
     except ValueError:
-        raise gr.Error("صيغة أوقات التخطي غير صحيحة. مثال: 0:00-1:55, 21:55-24:30")
-    progress(0, desc="بدء المسح...")
+        raise gr.Error(t("The times to skip aren't valid. Example: 0:00-1:55, 21:55-24:30"))
+    progress(0, desc=t("Starting the scan..."))
     log = captured(run_scan, p, paths, skip, min_gap, keep_diff, auto, auto_min, txn=txn.scan_txn(p))
     return (log, gr.update(choices=projects()), *load_project(p.name))
 
@@ -214,7 +252,7 @@ def do_autoskip(pname, auto, auto_min, progress=gr.Progress(track_tqdm=True)):
     from .scan import run_clusters
     p = need_project(pname)
     if not p.load("project.json"):
-        raise gr.Error("امسح حلقة واحدة على الأقل أولًا")
+        raise gr.Error(t("Scan at least one episode first"))
     def redo():
         if auto:
             detect_repeats(p, auto_min)
@@ -222,7 +260,7 @@ def do_autoskip(pname, auto, auto_min, progress=gr.Progress(track_tqdm=True)):
             clear_repeats(p)
         run_clusters(p)
 
-    progress(0, desc="مقارنة الحلقات...")
+    progress(0, desc=t("Comparing the episodes..."))
     log = captured(redo, txn=txn.clusters_txn(p))
     return (log, *load_project(p.name))
 
@@ -240,14 +278,14 @@ def do_split(pname, selected, cut, progress=gr.Progress(track_tqdm=True)):
     p = need_project(pname)
     ids = [int(s.lstrip("#")) for s in selected or []]
     if len(ids) != 1:
-        raise gr.Error("حدّد مجموعة واحدة فقط (المختلطة) ثم اضغط «قسّم»")
+        raise gr.Error(t("Select exactly one cluster (the mixed one), then press “Split”"))
     log = captured(split_cluster, p, ids[0], cut, txn=txn.clusters_txn(p))
     items, choices = clusters_view(p.name)
     return log, items, gr.update(choices=choices, value=[])
 
 
-USAGE_AR = {"frames": "الإطارات المستخرجة", "scan": "بيانات المسح", "clusters": "صور المجموعات",
-            "cache": "التحليل المحفوظ لإعادة البناء"}
+USAGE = {"frames": "Extracted frames", "scan": "Scan data", "clusters": "Cluster images",
+         "cache": "Saved analysis for rebuilds"}
 
 
 def usage_md(pname):
@@ -257,10 +295,11 @@ def usage_md(pname):
     p = Project(safe_name(pname))
     rows = [(l, b) for l, b in disk_usage(p) if b]
     gone = p.load("project.json", {}).get("frames_deleted")
-    lines = [f"**حجم المشروع: {fmt_bytes(sum(b for _, b in rows))}**"
-             + (" — الإطارات محذوفة، لا يمكن البناء من جديد" if gone else ""), "",
-             "| الجزء | الحجم |", "|---|---|"]
-    lines += [f"| {USAGE_AR.get(l, l.replace('characters/', 'الشخصية '))} | ⁦{fmt_bytes(b)}⁩ |" for l, b in rows]
+    part = lambda l: t(USAGE[l]) if l in USAGE else t("Character {name}", name=l.replace("characters/", ""))
+    lines = [t("**Project size: {size}**", size=fmt_bytes(sum(b for _, b in rows)))
+             + (t(" — frames deleted, no more builds") if gone else ""), "",
+             t("| Part | Size |"), "|---|---|"]
+    lines += [f"| {part(l)} | {ltr(fmt_bytes(b))} |" for l, b in rows]
     return "\n".join(lines)
 
 
@@ -268,7 +307,7 @@ def do_clean(pname, all_frames, confirm):
     from .cleanup import clean
     p = need_project(pname)
     if all_frames and not confirm:
-        raise gr.Error("فعّل خانة التأكيد أولًا: حذف كل الإطارات نهائي ويمنع إعادة البناء")
+        raise gr.Error(t("Tick the confirmation first: deleting all frames is final and stops any rebuild"))
     log = captured(clean, p, "all" if all_frames else "safe")
     return log, usage_md(pname)
 
@@ -291,10 +330,10 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
     p = need_project(pname)
     name = (name or "").strip()
     if not name:
-        raise gr.Error("اكتب كلمة التفعيل (اسم الشخصية)")
+        raise gr.Error(t("Type the trigger word (the character's name)"))
     ids = sorted(int(s.lstrip("#")) for s in selected or [])
     if not ids and not ref_files:
-        raise gr.Error("اختر مجموعة واحدة على الأقل من الصور، أو ارفع صورًا مرجعية")
+        raise gr.Error(t("Pick at least one cluster of images, or upload reference images"))
     try:
         check_overwrite(p, name, overwrite)  # before the undo snapshot, which moves the old sorted/ aside
     except SystemExit as e:
@@ -313,7 +352,7 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
                   "keep_text" in opts, "keep_crowded" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
                   overwrite, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts)
 
-    progress(0, desc="بدء البناء...")
+    progress(0, desc=t("Starting the build..."))
     log = captured(run, txn=txn.build_txn(p, name, ref_dir))
     chars = characters(p.name)
     char = p.char_dir(name).name
@@ -382,34 +421,36 @@ def outfits_of(pname, char):
 def filter_choices(pname, char):
     root = sorted_root(pname, char) if pname and char else None
     files = [Path(f) for f in list_files(pname, char, "all")]
-    choices = [(f"الكل ({len(files)})", "all")]
+    choices = [(t("All ({n})", n=len(files)), "all")]
     if not files:
         return choices
     n_review = sum(is_review(root, f) for f in files)
     if n_review:
-        choices.append((f"⚠ للمراجعة ({n_review})", "_review"))
+        choices.append((t("⚠ To check ({n})", n=n_review), "_review"))
     alike = look_alikes(pname, char)
     n_alike = sum(f.stem in alike for f in files)
     if n_alike:
-        choices.append((f"🚫 تشبه ما رفضته ({n_alike})", "_alike"))
+        choices.append((t("🚫 Like what you rejected ({n})", n=n_alike), "_alike"))
     for o in outfits_of(pname, char):
         n = sum(o["token"] in caption_tags(f) for f in files)
-        choices.append((f"🧥 زي {o['id']}: {', '.join(o['tags'][:2])} ({n})", f"outfit:{o['token']}"))
+        choices.append((t("🧥 Outfit {id}: {tags} ({n})", id=o["id"], tags=", ".join(o["tags"][:2]), n=n),
+                        f"outfit:{o['token']}"))
     counts = Counter("/".join(group_of(root, f)) for f in files)
-    for g in sorted(counts, key=lambda g: (list(FRAMING_AR).index(g.split("/")[0]) if g.split("/")[0] in FRAMING_AR else 9, g)):
+    order = lambda g: (list(FRAMING).index(g.split("/")[0]) if g.split("/")[0] in FRAMING else 9, g)
+    for g in sorted(counts, key=order):
         fr, vw = (g.split("/") + [""])[:2]
-        choices.append((f"{FRAMING_AR.get(fr, fr)} · {VIEW_AR.get(vw, vw)} ({counts[g]})", g))
+        choices.append((t("{shot} · {angle} ({n})", shot=shot_name(fr), angle=angle_name(vw), n=counts[g]), g))
     return choices
 
 
 def thumb(char_dir, f: Path):
-    t = char_dir / "_thumbs" / (f.stem + ".jpg")
-    if not t.exists() or t.stat().st_mtime < f.stat().st_mtime:
-        t.parent.mkdir(exist_ok=True)
+    tp = char_dir / "_thumbs" / (f.stem + ".jpg")
+    if not tp.exists() or tp.stat().st_mtime < f.stat().st_mtime:
+        tp.parent.mkdir(exist_ok=True)
         im = Image.open(f).convert("RGB")
         im.thumbnail((320, 320))
-        im.save(t, quality=85)
-    return t
+        im.save(tp, quality=85)
+    return tp
 
 
 def gallery_items(pname, char, files):
@@ -425,7 +466,7 @@ def gallery_items(pname, char, files):
 def panel(pname, char, files, idx):
     """Large preview, caption and info line for files[idx]."""
     if not files:
-        return None, "", "لا توجد صور هنا."
+        return None, "", t("No images here.")
     f = Path(files[idx])
     txt = f.with_suffix(".txt")
     caption = txt.read_text(encoding="utf-8") if txt.exists() else ""
@@ -433,35 +474,34 @@ def panel(pname, char, files, idx):
     build = Project(safe_name(pname)).load(f"characters/{char}/build.json", {"items": []})
     meta = next((it for it in build["items"] if Path(it["file"]).stem == f.stem), None)
     fr, vw = (list(group_of(root, f)) + ["", ""])[:2]
-    info = f"**{idx + 1} / {len(files)}** — {FRAMING_AR.get(fr, fr)} · {VIEW_AR.get(vw, vw)}"
+    info = t("**{i} / {n}** — {shot} · {angle}", i=idx + 1, n=len(files), shot=shot_name(fr), angle=angle_name(vw))
     if is_review(root, f):
-        info += " — ⚠ تحتاج تأكيدًا"
+        info += t(" — ⚠ needs a check")
     if f.stem in look_alikes(pname, char):
-        info += " — 🚫 تشبه صورة رفضتها كشخصية أخرى"
+        info += t(" — 🚫 looks like an image you rejected as another character")
     if meta:
         m, s = divmod(int(meta["t"]), 60)
-        # ⁦..⁩ isolate Latin text/numbers so they don't scramble the right-to-left line
-        ep, at = f"⁦v{meta['vid']:02d}⁩", f"⁦{m}:{s:02d}⁩"
-        score, sharp = f"⁦{meta['ccip']:.3f}⁩", f"⁦{meta['sharp']:.0f}⁩"
-        info += (f"\n\nالقص: {TYPE_AR.get(meta['type'], meta['type'])} — الحلقة {ep} عند {at}"
-                 f" — درجة التطابق {score} (الأقل أفضل) — الحدة {sharp}")
+        info += "\n\n" + t("Crop: {crop} — episode {ep} at {at} — match score {score} (lower is better) — "
+                           "sharpness {sharp}", crop=t(CROP.get(meta["type"], meta["type"])),
+                           ep=f"v{meta['vid']:02d}", at=f"{m}:{s:02d}", score=f"{meta['ccip']:.3f}",
+                           sharp=f"{meta['sharp']:.0f}")
         if meta.get("upscaled", 1) > 1:
-            info += f" — مُكبّرة ⁦×{meta['upscaled']:.1f}⁩"
+            info += t(" — upscaled ×{f}", f=f"{meta['upscaled']:.1f}")
     return str(f), caption, info
 
 
 def stats_text(pname, char):
     files = list_files(pname, char, "all")
     if not char:
-        return "اختر شخصية."
+        return t("Pick a character.")
     root = sorted_root(pname, char)
     n_review = sum(is_review(root, Path(f)) for f in files)
     from . import negatives
     trash = root.parent / "_deleted"
     n_del = len(list(trash.rglob("*.png"))) if trash.exists() else 0
     n_rej = len(negatives.load(root.parent)[0])
-    return (f"**{len(files)}** صورة — منها **{n_review}** للمراجعة — المحذوفة: {n_del}"
-            + (f" — رُفضت كشخصية أخرى: {n_rej}" if n_rej else ""))
+    return (t("**{n}** images — **{r}** to check — deleted: {d}", n=len(files), r=n_review, d=n_del)
+            + (t(" — rejected as another character: {n}", n=n_rej) if n_rej else ""))
 
 
 def review_outputs(pname, char, files, idx, regallery=True):
@@ -482,7 +522,8 @@ def change_char(pname, char):
 
 
 def move_choices():
-    return gr.update(choices=[(f"{FRAMING_AR[f]} · {VIEW_AR[v]}", f"{f}/{v}") for f in FRAMING_AR for v in VIEW_AR])
+    return gr.update(choices=[(t("{shot} · {angle}", shot=shot_name(f), angle=angle_name(v)), f"{f}/{v}")
+                              for f in FRAMING for v in VIEW])
 
 
 def select_image(pname, char, files, evt: gr.SelectData):
@@ -520,7 +561,7 @@ def filter_update(pname, char, flt):
 def delete_image(pname, char, flt, files, idx, undo):
     """A bad image of the right character: removed, nothing is learned."""
     if not files:
-        raise gr.Error("لا توجد صورة محددة")
+        raise gr.Error(t("No image selected"))
     undo = _trash(pname, char, files, idx, undo, "delete")
     files = list_files(pname, char, flt)
     return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
@@ -531,15 +572,16 @@ def reject_image(pname, char, flt, files, idx, undo):
     look like it, and every later build leaves such crops out."""
     from . import negatives
     if not files:
-        raise gr.Error("لا توجد صورة محددة")
+        raise gr.Error(t("No image selected"))
     if not negatives.reject(sorted_root(pname, char).parent, Path(files[idx]).stem):
-        raise gr.Error("هذه الشخصية بُنيت بإصدار أقدم من البرنامج: أعد بناءها مرة واحدة ليتعلّم من الرفض. "
-                       "أو احذف الصورة بزر «صورة سيئة».")
+        raise gr.Error(t("This character was built by an older version of the program: build it again once so it "
+                         "can learn from rejections. Or remove the image with “Bad image”."))
     undo = _trash(pname, char, files, idx, undo, "reject")
     alike = look_alikes(pname, char)
     n = sum(Path(f).stem in alike for f in list_files(pname, char, "all"))
-    gr.Info(f"رُفضت كشخصية أخرى. {n} صورة باقية تشبه ما رفضته: اخترها من «🚫 تشبه ما رفضته» في قائمة العرض."
-            if n else "رُفضت كشخصية أخرى، وسيستبعد البرنامج ما يشبهها في كل بناء قادم.")
+    gr.Info(t("Rejected as another character. {n} remaining images look like it: pick “🚫 Like what you "
+              "rejected” under “Show”.", n=n)
+            if n else t("Rejected as another character; every later build leaves out what looks like it."))
     files = list_files(pname, char, flt)
     return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
 
@@ -547,7 +589,7 @@ def reject_image(pname, char, flt, files, idx, undo):
 def undo_delete(pname, char, flt, files, idx, undo):
     from . import negatives
     if not undo:
-        raise gr.Error("لا يوجد حذف للتراجع عنه")
+        raise gr.Error(t("Nothing to undo"))
     undo = list(undo)
     orig, moved, *kind = undo.pop()
     orig, moved = Path(orig), Path(moved)
@@ -562,27 +604,27 @@ def undo_delete(pname, char, flt, files, idx, undo):
 def forget_rejected(pname, char, flt, files, idx):
     from . import negatives
     if not char:
-        raise gr.Error("اختر شخصية")
+        raise gr.Error(t("Pick a character"))
     char_dir = sorted_root(pname, char).parent
     n = len(negatives.load(char_dir)[0])
     negatives.clear(char_dir)
-    gr.Info(f"نسي البرنامج {n} صورة مرفوضة. الصور نفسها تبقى في المحذوفات.")
+    gr.Info(t("The program forgot {n} rejected images. The images themselves stay deleted.", n=n))
     files = list_files(pname, char, flt)
     return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
 
 
 def move_image(pname, char, flt, files, idx, target):
     if not files or not target:
-        raise gr.Error("اختر صورة والمجلد المطلوب")
+        raise gr.Error(t("Pick an image and the target group"))
     _move_pair(Path(files[idx]), sorted_root(pname, char) / target)
     return review_outputs(pname, char, list_files(pname, char, flt), idx)
 
 
 def save_caption(files, idx, caption):
     if not files:
-        raise gr.Error("لا توجد صورة محددة")
+        raise gr.Error(t("No image selected"))
     Path(files[idx]).with_suffix(".txt").write_text((caption or "").strip(), encoding="utf-8")
-    gr.Info("تم حفظ الوصف")
+    gr.Info(t("Caption saved"))
 
 
 # ---------- tab 4: bulk tag editor ----------
@@ -595,14 +637,15 @@ def _tag_state(pname, char, query=""):
     """-> table rows, status markdown, all tags"""
     from .tags import history_size, tag_counts
     if not pname or not char or not (char_dir_of(pname, char) / "sorted").exists():
-        return [], "اختر شخصية مبنية.", []
+        return [], t("Pick a built character."), []
     cnt, n = tag_counts(char_dir_of(pname, char))
     q = (query or "").strip().lower()
-    rows = [[t, c, round(100 * c / max(n, 1), 1)] for t, c in cnt.most_common() if q in t.lower()]
-    status = f"**{n}** وصف — **{len(cnt)}** وسم مختلف — تعديلات قابلة للتراجع: {history_size(char_dir_of(pname, char))}"
+    rows = [[tag, c, round(100 * c / max(n, 1), 1)] for tag, c in cnt.most_common() if q in tag.lower()]
+    status = t("**{n}** captions — **{k}** different tags — changes you can undo: {u}",
+               n=n, k=len(cnt), u=history_size(char_dir_of(pname, char)))
     outfits = outfits_of(pname, char)
     if outfits:
-        status += "\n\n" + "\n".join(f"- 🧥 ⁦`{o['token']}`⁩: {', '.join(o['tags'])}" for o in outfits)
+        status += "\n\n" + "\n".join(f"- 🧥 {ltr('`' + o['token'] + '`')}: {', '.join(o['tags'])}" for o in outfits)
     return rows, status, list(cnt)
 
 
@@ -622,44 +665,44 @@ def pick_tag(selected, evt: gr.SelectData):
 def _tag_edit(pname, char, query, **kw):
     from .tags import edit_tags
     if not char:
-        raise gr.Error("اختر الشخصية")
+        raise gr.Error(t("Pick the character"))
     from .outfits import sync_tokens
     n = edit_tags(char_dir_of(pname, char), **kw)
     sync_tokens(Project(safe_name(pname)), char, kw.get("remove", ()), kw.get("replace"))
-    gr.Info(f"عُدّل {n} وصف")
+    gr.Info(t("Changed {n} captions", n=n))
     return tag_view(pname, char, query)
 
 
 def tag_remove(pname, char, selected, query):
     if not selected:
-        raise gr.Error("اختر وسمًا أو أكثر من الجدول")
+        raise gr.Error(t("Pick one or more tags in the table"))
     return _tag_edit(pname, char, query, remove=selected)
 
 
 def tag_replace(pname, char, selected, new_text, query):
     if not selected:
-        raise gr.Error("اختر وسمًا أو أكثر من الجدول")
-    return _tag_edit(pname, char, query, replace={t: new_text or "" for t in selected})
+        raise gr.Error(t("Pick one or more tags in the table"))
+    return _tag_edit(pname, char, query, replace={tag: new_text or "" for tag in selected})
 
 
 def tag_add(pname, char, add_text, query):
     from .tags import split_tags
     if not split_tags(add_text or ""):
-        raise gr.Error("اكتب الوسم المراد إضافته")
+        raise gr.Error(t("Type the tag to add"))
     return _tag_edit(pname, char, query, add=split_tags(add_text))
 
 
 def tag_undo(pname, char, query):
     from .tags import undo_last
     if not char:
-        raise gr.Error("اختر الشخصية")
+        raise gr.Error(t("Pick the character"))
     from .outfits import resync_after_undo
     try:
         n = undo_last(char_dir_of(pname, char))
     except SystemExit:
-        raise gr.Error("لا يوجد تعديل للتراجع عنه")
+        raise gr.Error(t("No change to undo"))
     resync_after_undo(Project(safe_name(pname)), char)
-    gr.Info(f"استُرجع {n} وصف")
+    gr.Info(t("Restored {n} captions", n=n))
     return tag_view(pname, char, query)
 
 
@@ -667,7 +710,7 @@ def rerun_outfits(pname, char, query):
     from .outfits import run_outfits
     p = need_project(pname)
     if not char:
-        raise gr.Error("اختر الشخصية")
+        raise gr.Error(t("Pick the character"))
     log = captured(run_outfits, p, char)
     return (*tag_view(pname, char, query), log)
 
@@ -681,13 +724,14 @@ def save_target(pname, char, parent):
     which deleting the project would take with it."""
     parent = (parent or "").strip().strip('"').strip("'")
     if not parent:
-        raise gr.Error("اكتب أو الصق مسار المكان الذي تريد الحفظ فيه")
+        raise gr.Error(t("Type or paste the path of the place to save in"))
     parent = Path(parent)
     if not parent.is_absolute():
-        raise gr.Error("اكتب المسار كاملًا، مثل D:\\datasets")
+        raise gr.Error(t("Type the full path, such as {example}", example="D:\\datasets"))
     out = (parent / char).resolve()
     if PROJECTS_DIR.resolve() in out.parents or out == PROJECTS_DIR.resolve():
-        raise gr.Error("اختر مكانًا خارج مجلد مشاريع البرنامج، وإلا حُذفت الصور مع المشروع")
+        raise gr.Error(t("Pick a place outside the program's projects folder, or the images would be deleted "
+                         "with the project"))
     return out
 
 
@@ -695,12 +739,12 @@ def save_summary(pname, char, parent):
     """-> (summary markdown, rows: shot, angle, count) of what saving will write."""
     from .export import group_of as export_group
     if not pname or not char:
-        return "اختر شخصية.", []
+        return t("Pick a character."), []
     p = Project(safe_name(pname))
     root = sorted_root(pname, char)
     files = sorted(root.rglob("*.png")) if root.exists() else []
     if not files:
-        return "لا توجد صور لهذه الشخصية. ابنِها أولًا (التبويب ٢).", []
+        return t("There are no images for this character. Build it first (tab 2)."), []
     build = p.load(f"characters/{char}/build.json", {})
     n_review = sum(is_review(root, f) for f in files)
     alike = look_alikes(pname, char)
@@ -708,31 +752,33 @@ def save_summary(pname, char, parent):
     n_txt = sum(f.with_suffix(".txt").exists() for f in files)
     upscaled = {Path(it["file"]).stem for it in build.get("items", []) if it.get("upscaled", 1) > 1}
     stems = {f.stem for f in files}
-    num = lambda x: f"⁦{x}⁩"
-    lines = [f"**سيُحفظ {num(len(files))} صورة** مع {num(n_txt)} ملف وصف (caption).",
-             f"- كلمة التفعيل: ⁦`{build.get('name', char)}`⁩"
-             + (f" — اسم الأنمي: ⁦`{build['series']}`⁩" if build.get("series") else "")]
+    lines = [t("**{n} images** will be saved with {c} caption files.", n=len(files), c=n_txt),
+             t("- Trigger word: `{name}`", name=build.get("name", char))
+             + (t(" — anime name: `{series}`", series=build["series"]) if build.get("series") else "")]
     if upscaled & stems:
-        lines.append(f"- مُكبّرة بنموذج الأنمي: {num(len(upscaled & stems))}")
+        lines.append(t("- Upscaled with the anime model: {n}", n=len(upscaled & stems)))
     for o in build.get("outfits", []):
         n = sum(o["token"] in caption_tags(f) for f in files)
-        lines.append(f"- زي {num(o['id'])} ⁦`{o['token']}`⁩: {num(n)} صورة ({', '.join(o['tags'][:3])})")
+        lines.append(t("- Outfit {id} `{token}`: {n} images ({tags})", id=o["id"], token=o["token"], n=n,
+                       tags=", ".join(o["tags"][:3])))
     if n_review:
-        lines.append(f"- ⚠ **{num(n_review)} صورة ما زالت معلّمة للمراجعة**، وستُحفظ معها. راجعها أولًا في التبويب ٣.")
+        lines.append(t("- ⚠ **{n} images are still marked to check**, and will be saved with the rest. Check them "
+                       "in tab 3 first.", n=n_review))
     if n_alike:
-        lines.append(f"- 🚫 **{num(n_alike)} صورة تشبه صورة رفضتها كشخصية أخرى**. راجعها في التبويب ٣.")
+        lines.append(t("- 🚫 **{n} images look like one you rejected as another character**. Check them in tab 3.",
+                       n=n_alike))
     if n_txt < len(files):
-        lines.append(f"- ⚠ {num(len(files) - n_txt)} صورة بلا ملف وصف.")
+        lines.append(t("- ⚠ {n} images have no caption file.", n=len(files) - n_txt))
     try:
-        lines.append(f"\n**مكان الحفظ:** ⁦`{save_target(pname, char, parent)}`⁩")
+        lines.append("\n" + t("**Saving to:** `{path}`", path=save_target(pname, char, parent)))
     except gr.Error:
         pass
     counts = Counter(export_group(root, f) for f in files)
     rows = []
     for g in sorted(counts, key=lambda g: -counts[g]):
         fr, vw = (g.split("/") + [""])[:2]
-        rows.append([FRAMING_AR.get(fr, fr), VIEW_AR.get(vw, vw), counts[g]])
-    rows.append(["المجموع", "", len(files)])
+        rows.append([shot_name(fr), angle_name(vw), counts[g]])
+    rows.append([t("Total"), "", len(files)])
     return "\n".join(lines), rows
 
 
@@ -741,11 +787,11 @@ def do_save(pname, char, parent):
     from .export import run_export
     p = need_project(pname)
     if not char:
-        raise gr.Error("اختر الشخصية")
+        raise gr.Error(t("Pick the character"))
     out = save_target(pname, char, parent)
     if out.exists() and any(out.iterdir()) and not (out / MARKER).exists():
-        raise gr.Error(f"يوجد مجلد بالاسم {out.name} في هذا المكان ولم يُنشئه البرنامج، فلن يُكتب فوقه. "
-                       "اختر مكانًا آخر.")
+        raise gr.Error(t("There is a folder named {name} in that place that the program didn't make, so it won't "
+                         "be overwritten. Pick another place.", name=out.name))
     save_settings(save_dir=str(out.parent))
     log = captured(run_export, p, char, str(out), txn=txn.export_txn(p, char, out))
     proj = p.load("project.json", {"videos": []})
@@ -762,12 +808,14 @@ def delete_hint(pname):
     p = Project(safe_name(pname))
     size = fmt_bytes(sum(b for _, b in disk_usage(p)))
     saved = p.load("project.json", {}).get("saved", {})
-    text = (f"يحذف مجلد المشروع **{p.name}** كله من مجلد البرنامج (⁦{size}⁩): الإطارات والشخصيات والتحليل "
-            "المحفوظ. الحلقات الأصلية والصور التي حفظتها في مكان آخر لا تُمس.")
+    text = t("Deletes the whole project folder **{name}** from the program folder ({size}): frames, characters "
+             "and saved analysis. The original episodes and the images you saved elsewhere aren't touched.",
+             name=p.name, size=size)
     if saved:
-        text += "\n\nحُفظ منه: " + "، ".join(f"⁦`{c}`⁩ ← ⁦`{d}`⁩" for c, d in saved.items())
+        text += "\n\n" + t("Saved from it: ") + t(", ").join(t("`{char}` → `{path}`", char=c, path=d)
+                                                             for c, d in saved.items())
     else:
-        text += "\n\n⚠ **لم تحفظ أي شخصية من هذا المشروع بعد.**"
+        text += "\n\n" + t("⚠ **No character of this project was saved yet.**")
     return text
 
 
@@ -775,286 +823,326 @@ def delete_project(pname, confirm):
     from .cleanup import disk_usage, fmt_bytes
     p = need_project(pname)
     if not p.dir.exists():
-        raise gr.Error("المشروع غير موجود")
+        raise gr.Error(t("The project doesn't exist"))
     if not confirm:
-        raise gr.Error("فعّل خانة التأكيد أولًا: حذف المشروع نهائي")
+        raise gr.Error(t("Tick the confirmation first: deleting the project is final"))
     size = fmt_bytes(sum(b for _, b in disk_usage(p)))
     try:
         shutil.rmtree(p.dir)
     except OSError as e:
-        raise gr.Error(f"تعذّر حذف بعض الملفات (ربما مفتوحة في برنامج آخر): {e}")
+        raise gr.Error(t("Some files couldn't be deleted (open in another program?): {error}", error=e))
     left = projects()
-    gr.Info(f"حُذف المشروع {p.name} وتحرّرت ⁦{size}⁩.")
+    gr.Info(t("Deleted the project {name} and freed {size}.", name=p.name, size=size))
     return gr.update(choices=left, value=left[0] if left else None), gr.update(value=False)
+
+
+def remember_language():
+    from .aitk import save_settings
+    save_settings(ui_lang=lang())
 
 
 # ---------- layout ----------
 
 def build_ui():
     import onnxruntime as ort
-    from .aitk import load_settings
     gpu = "CUDAExecutionProvider" in ort.get_available_providers()
     with gr.Blocks(title="animelora", analytics_enabled=False) as demo:
-        gr.Markdown("## animelora — تجهيز صور LoRA لشخصية من حلقات الأنمي\n"
-                    f"{'🟢 كرت الشاشة يعمل (CUDA)' if gpu else '🔴 يعمل على المعالج فقط (بطيء)'}")
-        with gr.Row():
-            project = gr.Dropdown(choices=projects(), value=(projects() or [None])[0], allow_custom_value=True,
-                                  label="المشروع (اختر مشروعًا أو اكتب اسمًا جديدًا)", scale=4)
-            refresh = gr.Button("🔄 تحديث", scale=1)
-
-        with gr.Tabs() as tabs:
-            # --- 1
-            with gr.Tab("١. مسح الحلقات", id="scan"):
-                gr.Markdown("الصق مسار حلقة في كل سطر، أو مسار مجلد كامل. "
-                            "(في مستكشف ويندوز: Shift + زر الفأرة الأيمن على الملف ← Copy as path)")
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        videos = gr.Textbox(lines=4, label="الحلقات", elem_classes="ltr",
-                                            placeholder="D:\\anime\\ep01.mkv\nD:\\anime\\Season 1")
-                        auto = gr.Checkbox(True, label="اكتشاف الشارة (OP/ED) تلقائيًا: المقاطع المتكررة بين الحلقات "
-                                                       "تُستبعد. مع حلقة واحدة تُستخدم الحلقة المجاورة في المجلد للمقارنة")
-                        skip = gr.Textbox(label="أوقات إضافية تُتجاهل يدويًا (اختياري)", elem_classes="ltr",
-                                          placeholder="0:00-1:55, 21:55-24:30")
-                        with gr.Accordion("إعدادات متقدمة", open=False):
-                            auto_min = gr.Slider(15, 120, 40, step=5,
-                                                 label="أقل طول لمقطع متكرر حتى يُعدّ شارة (ثانية)")
-                            autoskip_btn = gr.Button("أعد اكتشاف الشارة للحلقات الممسوحة")
-                            stop_auto = gr.Button(STOP_LABEL, variant="stop", visible=False)
-                            min_gap = gr.Slider(0.1, 2.0, 0.35, step=0.05, label="أقل فاصل بين إطارين محفوظين (ثانية)")
-                            keep_diff = gr.Slider(1, 20, 5, step=0.5, label="مقدار التغيّر المطلوب لحفظ إطار جديد")
-                        scan_btn = gr.Button("▶ ابدأ المسح", variant="primary")
-                        stop_scan = gr.Button(STOP_LABEL, variant="stop", visible=False)
-                    with gr.Column(scale=3):
-                        vids_df = gr.Dataframe(headers=["#", "الحلقة", "المدة (دقيقة)", "إطارات", "مستبعد تلقائيًا"],
-                                               interactive=False, wrap=True, label="الحلقات الممسوحة في المشروع",
-                                               column_widths=["6%", "34%", "11%", "10%", "39%"])
-                        with gr.Accordion("💾 المساحة على القرص", open=False):
-                            usage = gr.Markdown()
-                            clean_safe_btn = gr.Button("🧹 تنظيف آمن: حذف الإطارات التي لا يحتاجها البرنامج + المصغّرات")
-                            gr.Markdown("**حذف كل الإطارات** يوفر أكثر، وتبقى الصور النهائية، "
-                                        "لكن لا يمكن بعده البناء أو التجميع في هذا المشروع.")
-                            clean_confirm = gr.Checkbox(label="أفهم أن هذا الحذف نهائي")
-                            clean_all_btn = gr.Button("حذف كل الإطارات", variant="stop")
-                scan_log = gr.Textbox(lines=12, label="السجل", elem_id="log", autoscroll=True)
-
-            # --- 2
-            with gr.Tab("٢. اختيار الشخصية", id="pick"):
-                gr.Markdown("اضغط على صورة الشخصية لتحديدها، واضغط مرة أخرى لإلغاء التحديد. إن ظهرت الشخصية في أكثر "
-                            "من مجموعة (زي مختلف مثلًا) فاختر كل مجموعاتها. **الأرقام تتغير بعد كل مسح.**")
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        clusters_gal = gr.Gallery(label="الشخصيات المكتشفة", columns=5, height=560,
-                                                  allow_preview=False, object_fit="contain", buttons=[])
-                        with gr.Accordion("إعادة التجميع (إن اختلطت شخصيتان أو انقسمت شخصية)", open=False):
-                            cut = gr.Slider(0.10, 0.40, 0.20, step=0.01,
-                                            label="مسافة الدمج: أقل = مجموعات أكثر وأصغر")
-                            min_csize = gr.Slider(3, 40, 8, step=1, label="إخفاء المجموعات الأصغر من")
-                            recluster_btn = gr.Button("أعد تجميع المشروع كله")
-                            gr.Markdown("**أو قسّم مجموعة مختلطة وحدها:** حدّدها (واحدة فقط) ثم اضغط «قسّم». "
-                                        "أرقام بقية المجموعات لا تتغير، والأجزاء الجديدة تأخذ أرقامًا في آخر القائمة.")
-                            split_cut = gr.Slider(0.06, 0.19, 0.14, step=0.01,
-                                                  label="شدة التقسيم: أقل = أجزاء أكثر")
-                            split_btn = gr.Button("✂ قسّم المجموعة المحددة")
-                            stop_clu = gr.Button(STOP_LABEL, variant="stop", visible=False)
-                            recluster_log = gr.Textbox(lines=6, label="السجل", elem_id="log")
-                    with gr.Column(scale=2):
-                        chosen = gr.CheckboxGroup(label="المجموعات المختارة", choices=[])
-                        sheet = gr.Image(label="معاينة المجموعة", interactive=False, height=320,
-                                         buttons=["fullscreen"])
-                        refs = gr.File(file_count="multiple", file_types=["image"], type="filepath", height=150,
-                                       label="أو/و: صور مرجعية للشخصية (اختياري، مفيد للشخصيات الثانوية)")
-                        name = gr.Textbox(label="كلمة التفعيل (اسم الشخصية)", elem_classes="ltr",
-                                          placeholder="natsu_ft")
-                        series = gr.Textbox(label="اسم الأنمي كوسم (اختياري)", elem_classes="ltr",
-                                            placeholder="fairy tail")
-                        upscale_on = gr.Checkbox(label="تكبير الصور الصغيرة بنموذج مخصص للأنمي (CDC): خطوط أوضح من "
-                                                       "التكبير العادي، ويُنقذ القصّات الصغيرة")
-                        upscale_to = gr.Slider(512, 1536, 1024, step=64, visible=False,
-                                               label="كبّر كل صورة أصغر من هذا الحجم إليه (بكسل؛ اجعله بدقة التدريب)")
-                        with gr.Accordion("إعدادات متقدمة", open=False):
-                            threshold = gr.Slider(0.06, 0.25, 0.13, step=0.005,
-                                                  label="حد التطابق: أقل = أدق وصور أقل، أعلى = صور أكثر وأخطاء أكثر")
-                            sim = gr.Slider(0.60, 0.98, 0.80, step=0.01,
-                                            label="حد التكرار: أقل = حذف تكرار أكثر")
-                            min_size = gr.Slider(256, 1024, 448, step=32, label="أقل حجم للقصة (بكسل)")
-                            relax = gr.Slider(1.0, 2.0, 1.0, step=0.05,
-                                              label="تتبع اللقطة (1 = متوقف؛ قد يُدخل شخصيات خاطئة)")
-                            tagger = gr.Dropdown(["EVA02_Large", "SwinV2_v3", "ConvNext_v3", "ViT_v3"],
-                                                 value="EVA02_Large", label="نموذج الوسوم")
-                            opts = gr.CheckboxGroup(BUILD_OPTIONS, value=["outfits", "screencap"], label="خيارات")
-                        overwrite = gr.Checkbox(label="استبدال نتائج سابقة بنفس الاسم (يمسح مراجعتك السابقة)")
-                        build_btn = gr.Button("▶ ابنِ مجموعة الصور", variant="primary")
-                        stop_build = gr.Button(STOP_LABEL, variant="stop", visible=False)
-                build_log = gr.Textbox(lines=14, label="التقرير", elem_id="log")
-
-            # --- 3
-            with gr.Tab("٣. المراجعة", id="review"):
-                gr.Markdown("أزل كل صورة ليست للشخصية، وابدأ بالصور المعلّمة ⚠. "
-                            "**N** (ليست الشخصية): لصورة شخصية أخرى، فيتعلّم منها البرنامج: يعلّم ما يشبهها بـ🚫 "
-                            "ويستبعده في كل بناء قادم. **Delete**: لصورة سيئة للشخصية نفسها، ولا يتعلّم منها شيئًا. "
-                            "**← →** للتنقل، و**Ctrl+Z** للتراجع.")
-                with gr.Row():
-                    r_char = gr.Dropdown(label="الشخصية", choices=[], scale=2)
-                    r_filter = gr.Dropdown(label="عرض", choices=[("الكل", "all")], value="all", scale=2)
-                    r_stats = gr.Markdown()
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        r_gal = gr.Gallery(columns=6, height=720, allow_preview=False, object_fit="contain",
-                                           show_label=False, buttons=[])
-                    with gr.Column(scale=2):
-                        r_img = gr.Image(interactive=False, height=460, show_label=False, elem_id="preview",
-                                         buttons=["fullscreen"])
-                        r_info = gr.Markdown()
-                        with gr.Row():
-                            prev_btn = gr.Button("→ السابق", elem_id="btn-prev")
-                            next_btn = gr.Button("التالي ←", elem_id="btn-next")
-                        with gr.Row():
-                            reject_btn = gr.Button("🚫 ليست الشخصية (N)", variant="stop", elem_id="btn-reject")
-                            del_btn = gr.Button("🗑 صورة سيئة (Delete)", elem_id="btn-del")
-                            undo_btn = gr.Button("↶ تراجع", elem_id="btn-undo")
-                        r_caption = gr.Textbox(lines=4, label="الوصف (caption)", elem_classes="ltr")
-                        save_btn = gr.Button("💾 حفظ الوصف")
-                        with gr.Row():
-                            move_to = gr.Dropdown(label="تصنيف خاطئ؟ انقلها إلى", choices=[], scale=3)
-                            move_btn = gr.Button("↪ نقل", scale=1)
-                        forget_btn = gr.Button("نسيان كل الصور المرفوضة كشخصية أخرى", size="sm")
-                files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
-
-            # --- 4
-            with gr.Tab("٤. الوسوم", id="tags"):
-                gr.Markdown("كل الوسوم في أوصاف الشخصية وعدد مرات ظهورها. اضغط على وسم في الجدول لتحديده، "
-                            "ثم احذفه أو استبدله في **كل** الأوصاف دفعة واحدة. كل تعديل يمكن التراجع عنه.")
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        with gr.Row():
-                            t_char = gr.Dropdown(label="الشخصية", choices=[], scale=2)
-                            t_search = gr.Textbox(label="بحث", elem_classes="ltr", scale=2)
-                        t_table = gr.Dataframe(headers=["الوسم", "العدد", "%"], interactive=False, max_height=620,
-                                               column_widths=["70%", "15%", "15%"])
-                    with gr.Column(scale=2):
-                        t_status = gr.Markdown()
-                        t_selected = gr.Dropdown(label="الوسوم المحددة", choices=[], multiselect=True,
-                                                 allow_custom_value=True, elem_classes="ltr")
-                        t_remove_btn = gr.Button("🗑 احذف المحدد من كل الأوصاف", variant="stop")
-                        with gr.Row():
-                            t_new = gr.Textbox(label="استبدل المحدد بـ (فارغ = حذف)", elem_classes="ltr", scale=3,
-                                               placeholder="brown eyes")
-                            t_replace_btn = gr.Button("↔ استبدل", scale=1)
-                        with gr.Row():
-                            t_add_text = gr.Textbox(label="أضف وسمًا لكل الأوصاف", elem_classes="ltr", scale=3)
-                            t_add_btn = gr.Button("➕ أضف", scale=1)
-                        t_undo_btn = gr.Button("↶ تراجع عن آخر تعديل (Ctrl+Z)", elem_id="btn-tag-undo")
-                        gr.Markdown("**الأزياء:** بعد حذف صور في المراجعة أعد فصل الأزياء ليُحدَّث توزيعها.")
-                        t_outfits_btn = gr.Button("🧥 أعد فصل الأزياء")
-                        t_log = gr.Textbox(lines=4, label="السجل", elem_id="log")
-
-            # --- 5
-            with gr.Tab("٥. حفظ الناتج", id="export"):
-                gr.Markdown("يحفظ الصور بعد المراجعة مع ملفات الوصف في مجلد باسم الشخصية داخل المكان الذي تختاره. "
-                            "هذا المجلد هو مجموعة البيانات التي تدرّب عليها.")
-                saved_dir = load_settings().get("save_dir", "")
-                with gr.Row():
-                    with gr.Column(scale=2):
-                        e_char = gr.Dropdown(label="الشخصية", choices=[])
-                        e_out = gr.Textbox(saved_dir, label="مكان الحفظ (الصق مسار مجلد؛ يُنشأ فيه مجلد باسم الشخصية)",
-                                           elem_classes="ltr", placeholder="D:\\datasets")
-                        export_btn = gr.Button("💾 احفظ الصور والأوصاف", variant="primary")
-                        stop_export = gr.Button(STOP_LABEL, variant="stop", visible=False)
-                        export_log = gr.Textbox(lines=6, label="السجل", elem_id="log")
-                    with gr.Column(scale=2):
-                        e_summary = gr.Markdown()
-                        groups_df = gr.Dataframe(headers=["اللقطة", "الزاوية", "العدد"], interactive=False,
-                                                 label="التوزيع")
-                with gr.Accordion("🗑 حذف المشروع من مجلد البرنامج (بعد الحفظ)", open=False):
-                    del_hint = gr.Markdown()
-                    del_confirm = gr.Checkbox(label="أفهم أن حذف المشروع نهائي ولا يمكن التراجع عنه")
-                    del_project_btn = gr.Button("🗑 احذف المشروع", variant="stop")
-
-        # ---- events ----
-        proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
-        project.change(load_project, project, proj_outputs)
-        refresh.click(lambda p: (gr.update(choices=projects()), *load_project(p)), project, [project, *proj_outputs])
-        def init_page(p):
-            """The project list is read again on every page load (projects made after the server started)."""
-            names = projects()
-            p = p if p in names else (names[0] if names else p)
-            return (gr.update(choices=names, value=p), *load_project(p))
-
-        demo.load(init_page, project, [project, *proj_outputs])
-
-        def long_action(btn, stop, fn, inputs, outputs):
-            """btn shows `stop` while fn runs; fn's event is returned so .success() can chain on it."""
-            ev = btn.click(start_ui, None, stop, queue=False).then(fn, inputs, outputs, concurrency_id="gpu")
-            # Gradio 6's frontend fires .then() follow-ups only after success (despite its docs), and only
-            # .failure() ones after an error - a stopped run ends in an error, so hide the button on both
-            ev.then(end_ui, None, stop, queue=False)
-            ev.failure(end_ui, None, stop, queue=False)
-            return ev
-
-        for stop in (stop_scan, stop_auto, stop_clu, stop_build, stop_export):
-            stop.click(press_stop, None, stop, queue=False)
-
-        long_action(scan_btn, stop_scan, do_scan, [project, videos, skip, auto, auto_min, min_gap, keep_diff],
-                    [scan_log, project, *proj_outputs])
-        long_action(autoskip_btn, stop_auto, do_autoskip, [project, auto, auto_min], [scan_log, *proj_outputs])
-        long_action(recluster_btn, stop_clu, do_recluster, [project, cut, min_csize],
-                    [recluster_log, clusters_gal, chosen])
-        long_action(split_btn, stop_clu, do_split, [project, chosen, split_cut], [recluster_log, clusters_gal, chosen])
-        clean_safe_btn.click(lambda p: do_clean(p, False, False), project, [scan_log, usage])
-        clean_all_btn.click(lambda p, c: do_clean(p, True, c), [project, clean_confirm], [scan_log, usage])
-        clusters_gal.select(pick_cluster, [project, chosen], [chosen, sheet])
-        # upscaling makes small crops usable, so allow smaller ones in when it's switched on
-        upscale_on.change(lambda on: (gr.update(visible=on), gr.update(value=320 if on else 448)),
-                          upscale_on, [upscale_to, min_size])
-        long_action(build_btn, stop_build, do_build,
-                    [project, chosen, refs, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
-                     tagger, opts, overwrite],
-                    [build_log, r_char, e_char, t_char, tabs]) \
-            .success(change_char, [project, r_char],
-                     [r_filter, move_to, r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats])
-
-        rv_out = [r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]
-        r_char.change(change_char, [project, r_char], [r_filter, move_to, *rv_out])
-        r_filter.change(load_review, [project, r_char, r_filter], rv_out)
-        r_gal.select(select_image, [project, r_char, files_st], rv_out)
-        prev_btn.click(step(-1), [project, r_char, files_st, idx_st], rv_out)
-        next_btn.click(step(+1), [project, r_char, files_st, idx_st], rv_out)
-        trash_in = [project, r_char, r_filter, files_st, idx_st, undo_st]
-        del_btn.click(delete_image, trash_in, [*rv_out, undo_st, r_filter])
-        reject_btn.click(reject_image, trash_in, [*rv_out, undo_st, r_filter])
-        undo_btn.click(undo_delete, trash_in, [*rv_out, undo_st, r_filter])
-        forget_btn.click(forget_rejected, [project, r_char, r_filter, files_st, idx_st], [*rv_out, r_filter])
-        move_btn.click(move_image, [project, r_char, r_filter, files_st, idx_st, move_to], rv_out)
-        save_btn.click(save_caption, [files_st, idx_st, r_caption], None)
-
-        t_out = [t_table, t_status, t_selected]
-        t_char.change(tag_view, [project, t_char, t_search], t_out)
-        t_search.change(tag_view, [project, t_char, t_search], t_out)
-        t_table.select(pick_tag, t_selected, t_selected)
-        t_remove_btn.click(tag_remove, [project, t_char, t_selected, t_search], t_out)
-        t_replace_btn.click(tag_replace, [project, t_char, t_selected, t_new, t_search], t_out)
-        t_add_btn.click(tag_add, [project, t_char, t_add_text, t_search], t_out)
-        t_undo_btn.click(tag_undo, [project, t_char, t_search], t_out)
-        t_outfits_btn.click(rerun_outfits, [project, t_char, t_search], [*t_out, t_log])
-
-        sum_in, sum_out = [project, e_char, e_out], [e_summary, groups_df]
-        e_char.change(save_summary, sum_in, sum_out)
-        e_out.change(save_summary, sum_in, sum_out)
-        tabs.select(save_summary, sum_in, sum_out)
-        tabs.select(delete_hint, project, del_hint)
-        project.change(delete_hint, project, del_hint)
-        tabs.select(tag_view, [project, t_char, t_search], t_out)
-        long_action(export_btn, stop_export, do_save, [project, e_char, e_out], [export_log]) \
-            .success(delete_hint, project, del_hint)
-        del_project_btn.click(delete_project, [project, del_confirm], [project, del_confirm])
+        build_page(demo, "ar", gpu)
+    with demo.route(LANGS["en"], "en"):
+        build_page(demo, "en", gpu)
     return demo
 
 
+def build_page(demo, language, gpu):
+    """The whole interface in one language, inside the current page of `demo`."""
+    with use(language):
+        _build_page(demo, language, gpu)
+
+
+def _build_page(demo, language, gpu):
+    from .aitk import load_settings
+    L = lambda fn: bound(language, fn)  # every event handler runs in this page's language
+    gr.Navbar(main_page_name=LANGS["ar"])
+    gr.Markdown("## " + t("animelora — LoRA datasets of a character from anime episodes") + "\n"
+                + (t("🟢 The graphics card is used (CUDA)") if gpu else t("🔴 Running on the CPU only (slow)")))
+    with gr.Row():
+        project = gr.Dropdown(choices=projects(), value=(projects() or [None])[0], allow_custom_value=True,
+                              label=t("Project (pick one or type a new name)"), scale=4)
+        refresh = gr.Button(t("🔄 Refresh"), scale=1)
+
+    with gr.Tabs() as tabs:
+        # --- 1
+        with gr.Tab(t("1. Scan episodes"), id="scan"):
+            gr.Markdown(t("Paste one episode path per line, or the path of a whole folder. "
+                          "(In Windows Explorer: Shift + right-click the file → Copy as path)"))
+            with gr.Row():
+                with gr.Column(scale=3):
+                    videos = gr.Textbox(lines=4, label=t("Episodes"), elem_classes="ltr",
+                                        placeholder="D:\\anime\\ep01.mkv\nD:\\anime\\Season 1")
+                    auto = gr.Checkbox(True, label=t("Find the OP/ED automatically: parts repeated between episodes "
+                                                     "are left out. With one episode, the next episode in its folder "
+                                                     "is used for the comparison"))
+                    skip = gr.Textbox(label=t("More times to ignore (optional)"), elem_classes="ltr",
+                                      placeholder="0:00-1:55, 21:55-24:30")
+                    with gr.Accordion(t("Advanced settings"), open=False):
+                        auto_min = gr.Slider(15, 120, 40, step=5,
+                                             label=t("Shortest repeated part counted as OP/ED (seconds)"))
+                        autoskip_btn = gr.Button(t("Find the OP/ED again for the scanned episodes"))
+                        stop_auto = gr.Button(stop_label(), variant="stop", visible=False)
+                        min_gap = gr.Slider(0.1, 2.0, 0.35, step=0.05,
+                                            label=t("Shortest gap between two kept frames (seconds)"))
+                        keep_diff = gr.Slider(1, 20, 5, step=0.5, label=t("How much a frame must change to be kept "
+                                                                          "again"))
+                    scan_btn = gr.Button(t("▶ Start scanning"), variant="primary")
+                    stop_scan = gr.Button(stop_label(), variant="stop", visible=False)
+                with gr.Column(scale=3):
+                    vids_df = gr.Dataframe(headers=["#", t("Episode"), t("Length (min)"), t("Frames"),
+                                                    t("Left out automatically")],
+                                           interactive=False, wrap=True, label=t("Episodes scanned in this project"),
+                                           column_widths=["5%", "31%", "13%", "13%", "38%"])
+                    with gr.Accordion(t("💾 Disk space"), open=False):
+                        usage = gr.Markdown()
+                        clean_safe_btn = gr.Button(t("🧹 Safe clean: delete frames the program doesn't need + "
+                                                     "thumbnails"))
+                        gr.Markdown(t("**Deleting all frames** saves more and keeps the finished images, but the "
+                                      "project can't be built or clustered again."))
+                        clean_confirm = gr.Checkbox(label=t("I understand this deletion is final"))
+                        clean_all_btn = gr.Button(t("Delete all frames"), variant="stop")
+            scan_log = gr.Textbox(lines=12, label=t("Log"), elem_id="log", autoscroll=True)
+
+        # --- 2
+        with gr.Tab(t("2. Pick the character"), id="pick"):
+            gr.Markdown(t("Click a character's image to select it, click again to unselect. If the character shows up "
+                          "in more than one cluster (another outfit, say), pick all of them. **The numbers change "
+                          "after every scan.**"))
+            with gr.Row():
+                with gr.Column(scale=3):
+                    clusters_gal = gr.Gallery(label=t("Characters found"), columns=5, height=560,
+                                              allow_preview=False, object_fit="contain", buttons=[])
+                    with gr.Accordion(t("Re-cluster (if two characters got mixed, or one got split)"), open=False):
+                        cut = gr.Slider(0.10, 0.40, 0.20, step=0.01,
+                                        label=t("Merge distance: lower = more, smaller clusters"))
+                        min_csize = gr.Slider(3, 40, 8, step=1, label=t("Hide clusters smaller than"))
+                        recluster_btn = gr.Button(t("Re-cluster the whole project"))
+                        gr.Markdown(t("**Or split one mixed cluster on its own:** select it (only that one), then "
+                                      "press “Split”. The other clusters keep their numbers; the new parts get "
+                                      "numbers at the end of the list."))
+                        split_cut = gr.Slider(0.06, 0.19, 0.14, step=0.01,
+                                              label=t("Split strength: lower = more parts"))
+                        split_btn = gr.Button(t("✂ Split the selected cluster"))
+                        stop_clu = gr.Button(stop_label(), variant="stop", visible=False)
+                        recluster_log = gr.Textbox(lines=6, label=t("Log"), elem_id="log")
+                with gr.Column(scale=2):
+                    chosen = gr.CheckboxGroup(label=t("Selected clusters"), choices=[])
+                    sheet = gr.Image(label=t("Cluster preview"), interactive=False, height=320,
+                                     buttons=["fullscreen"])
+                    refs = gr.File(file_count="multiple", file_types=["image"], type="filepath", height=150,
+                                   label=t("Or/and: reference images of the character (optional, useful for side "
+                                           "characters)"))
+                    name = gr.Textbox(label=t("Trigger word (the character's name)"), elem_classes="ltr",
+                                      placeholder="natsu_ft")
+                    series = gr.Textbox(label=t("Anime name as a tag (optional)"), elem_classes="ltr",
+                                        placeholder="fairy tail")
+                    upscale_on = gr.Checkbox(label=t("Enlarge small images with an anime upscaler (CDC): cleaner "
+                                                     "lines than plain resizing, and small crops become usable"))
+                    upscale_to = gr.Slider(512, 1536, 1024, step=64, visible=False,
+                                           label=t("Enlarge every image smaller than this to it (pixels; use your "
+                                                   "training resolution)"))
+                    with gr.Accordion(t("Advanced settings"), open=False):
+                        threshold = gr.Slider(0.06, 0.25, 0.13, step=0.005,
+                                              label=t("Match threshold: lower = stricter and fewer images, higher = "
+                                                      "more images and more mistakes"))
+                        sim = gr.Slider(0.60, 0.98, 0.80, step=0.01,
+                                        label=t("Duplicate threshold: lower = more duplicates removed"))
+                        min_size = gr.Slider(256, 1024, 448, step=32, label=t("Smallest crop size (pixels)"))
+                        relax = gr.Slider(1.0, 2.0, 1.0, step=0.05,
+                                          label=t("Shot tracking (1 = off; may let wrong characters in)"))
+                        tagger = gr.Dropdown(["EVA02_Large", "SwinV2_v3", "ConvNext_v3", "ViT_v3"],
+                                             value="EVA02_Large", label=t("Tagging model"))
+                        opts = gr.CheckboxGroup(build_options(), value=["outfits", "screencap"], label=t("Options"))
+                    overwrite = gr.Checkbox(label=t("Replace earlier results with the same name (clears your earlier "
+                                                    "review)"))
+                    build_btn = gr.Button(t("▶ Build the image set"), variant="primary")
+                    stop_build = gr.Button(stop_label(), variant="stop", visible=False)
+            build_log = gr.Textbox(lines=14, label=t("Report"), elem_id="log")
+
+        # --- 3
+        with gr.Tab(t("3. Review"), id="review"):
+            gr.Markdown(t("Remove every image that isn't the character, starting with the ones marked ⚠. **N** (not "
+                          "this character): an image of another character - the program learns from it, marks what "
+                          "looks like it with 🚫 and leaves it out of every later build. **Delete**: a bad image of "
+                          "the character itself; nothing is learned. **← →** to move, **Ctrl+Z** to undo."))
+            with gr.Row():
+                r_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
+                r_filter = gr.Dropdown(label=t("Show"), choices=[(t("All"), "all")], value="all", scale=2)
+                r_stats = gr.Markdown()
+            with gr.Row():
+                with gr.Column(scale=3):
+                    r_gal = gr.Gallery(columns=6, height=720, allow_preview=False, object_fit="contain",
+                                       show_label=False, buttons=[])
+                with gr.Column(scale=2):
+                    r_img = gr.Image(interactive=False, height=460, show_label=False, elem_id="preview",
+                                     buttons=["fullscreen"])
+                    r_info = gr.Markdown()
+                    with gr.Row():
+                        prev_btn = gr.Button(t("← Previous"), elem_id="btn-prev")
+                        next_btn = gr.Button(t("Next →"), elem_id="btn-next")
+                    with gr.Row():
+                        reject_btn = gr.Button(t("🚫 Not this character (N)"), variant="stop", elem_id="btn-reject")
+                        del_btn = gr.Button(t("🗑 Bad image (Delete)"), elem_id="btn-del")
+                        undo_btn = gr.Button(t("↶ Undo"), elem_id="btn-undo")
+                    r_caption = gr.Textbox(lines=4, label=t("Caption"), elem_classes="ltr")
+                    save_btn = gr.Button(t("💾 Save caption"))
+                    with gr.Row():
+                        move_to = gr.Dropdown(label=t("Wrong group? Move it to"), choices=[], scale=3)
+                        move_btn = gr.Button(t("↪ Move"), scale=1)
+                    forget_btn = gr.Button(t("Forget all images rejected as another character"), size="sm")
+            files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
+
+        # --- 4
+        with gr.Tab(t("4. Tags"), id="tags"):
+            gr.Markdown(t("All tags in the character's captions and how often they appear. Click a tag in the table "
+                          "to select it, then remove or replace it in **all** captions at once. Every change can be "
+                          "undone."))
+            with gr.Row():
+                with gr.Column(scale=3):
+                    with gr.Row():
+                        t_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
+                        t_search = gr.Textbox(label=t("Search"), elem_classes="ltr", scale=2)
+                    t_table = gr.Dataframe(headers=[t("Tag"), t("Count"), "%"], interactive=False, max_height=620,
+                                           column_widths=["70%", "15%", "15%"])
+                with gr.Column(scale=2):
+                    t_status = gr.Markdown()
+                    t_selected = gr.Dropdown(label=t("Selected tags"), choices=[], multiselect=True,
+                                             allow_custom_value=True, elem_classes="ltr")
+                    t_remove_btn = gr.Button(t("🗑 Remove the selected from all captions"), variant="stop")
+                    with gr.Row():
+                        t_new = gr.Textbox(label=t("Replace the selected with (empty = remove)"), elem_classes="ltr",
+                                           scale=3, placeholder="brown eyes")
+                        t_replace_btn = gr.Button(t("↔ Replace"), scale=1)
+                    with gr.Row():
+                        t_add_text = gr.Textbox(label=t("Add a tag to every caption"), elem_classes="ltr", scale=3)
+                        t_add_btn = gr.Button(t("➕ Add"), scale=1)
+                    t_undo_btn = gr.Button(t("↶ Undo the last change (Ctrl+Z)"), elem_id="btn-tag-undo")
+                    gr.Markdown(t("**Outfits:** after deleting images in review, separate the outfits again to update "
+                                  "them."))
+                    t_outfits_btn = gr.Button(t("🧥 Separate the outfits again"))
+                    t_log = gr.Textbox(lines=4, label=t("Log"), elem_id="log")
+
+        # --- 5
+        with gr.Tab(t("5. Save the result"), id="export"):
+            gr.Markdown(t("Saves the reviewed images with their captions in a folder named after the character, inside "
+                          "the place you choose. That folder is the dataset you train on."))
+            saved_dir = load_settings().get("save_dir", "")
+            with gr.Row():
+                with gr.Column(scale=2):
+                    e_char = gr.Dropdown(label=t("Character"), choices=[])
+                    e_out = gr.Textbox(saved_dir, label=t("Save to (paste a folder path; a folder named after the "
+                                                          "character is made in it)"),
+                                       elem_classes="ltr", placeholder="D:\\datasets")
+                    export_btn = gr.Button(t("💾 Save the images and captions"), variant="primary")
+                    stop_export = gr.Button(stop_label(), variant="stop", visible=False)
+                    export_log = gr.Textbox(lines=6, label=t("Log"), elem_id="log")
+                with gr.Column(scale=2):
+                    e_summary = gr.Markdown()
+                    groups_df = gr.Dataframe(headers=[t("Shot"), t("Angle"), t("Count")], interactive=False,
+                                             label=t("Distribution"))
+            with gr.Accordion(t("🗑 Delete the project from the program folder (after saving)"), open=False):
+                del_hint = gr.Markdown()
+                del_confirm = gr.Checkbox(label=t("I understand deleting the project is final and can't be undone"))
+                del_project_btn = gr.Button(t("🗑 Delete the project"), variant="stop")
+
+    # ---- events ----
+    proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
+    project.change(L(load_project), project, proj_outputs)
+    refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project, [project, *proj_outputs])
+
+    def init_page(p):
+        """The project list is read again on every page load (projects made after the server started)."""
+        names = projects()
+        p = p if p in names else (names[0] if names else p)
+        return (gr.update(choices=names, value=p), *load_project(p))
+
+    demo.load(L(init_page), project, [project, *proj_outputs])
+    demo.load(L(remember_language), None, None)
+
+    def long_action(btn, stop, fn, inputs, outputs):
+        """btn shows `stop` while fn runs; fn's event is returned so .success() can chain on it."""
+        ev = btn.click(L(start_ui), None, stop, queue=False).then(L(fn), inputs, outputs, concurrency_id="gpu")
+        # Gradio 6's frontend fires .then() follow-ups only after success (despite its docs), and only
+        # .failure() ones after an error - a stopped run ends in an error, so hide the button on both
+        ev.then(end_ui, None, stop, queue=False)
+        ev.failure(end_ui, None, stop, queue=False)
+        return ev
+
+    for stop in (stop_scan, stop_auto, stop_clu, stop_build, stop_export):
+        stop.click(L(press_stop), None, stop, queue=False)
+
+    long_action(scan_btn, stop_scan, do_scan, [project, videos, skip, auto, auto_min, min_gap, keep_diff],
+                [scan_log, project, *proj_outputs])
+    long_action(autoskip_btn, stop_auto, do_autoskip, [project, auto, auto_min], [scan_log, *proj_outputs])
+    long_action(recluster_btn, stop_clu, do_recluster, [project, cut, min_csize],
+                [recluster_log, clusters_gal, chosen])
+    long_action(split_btn, stop_clu, do_split, [project, chosen, split_cut], [recluster_log, clusters_gal, chosen])
+    clean_safe_btn.click(L(lambda p: do_clean(p, False, False)), project, [scan_log, usage])
+    clean_all_btn.click(L(lambda p, c: do_clean(p, True, c)), [project, clean_confirm], [scan_log, usage])
+    clusters_gal.select(L(pick_cluster), [project, chosen], [chosen, sheet])
+    # upscaling makes small crops usable, so allow smaller ones in when it's switched on
+    upscale_on.change(lambda on: (gr.update(visible=on), gr.update(value=320 if on else 448)),
+                      upscale_on, [upscale_to, min_size])
+    long_action(build_btn, stop_build, do_build,
+                [project, chosen, refs, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
+                 tagger, opts, overwrite],
+                [build_log, r_char, e_char, t_char, tabs]) \
+        .success(L(change_char), [project, r_char],
+                 [r_filter, move_to, r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats])
+
+    rv_out = [r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]
+    r_char.change(L(change_char), [project, r_char], [r_filter, move_to, *rv_out])
+    r_filter.change(L(load_review), [project, r_char, r_filter], rv_out)
+    r_gal.select(L(select_image), [project, r_char, files_st], rv_out)
+    prev_btn.click(L(step(-1)), [project, r_char, files_st, idx_st], rv_out)
+    next_btn.click(L(step(+1)), [project, r_char, files_st, idx_st], rv_out)
+    trash_in = [project, r_char, r_filter, files_st, idx_st, undo_st]
+    del_btn.click(L(delete_image), trash_in, [*rv_out, undo_st, r_filter])
+    reject_btn.click(L(reject_image), trash_in, [*rv_out, undo_st, r_filter])
+    undo_btn.click(L(undo_delete), trash_in, [*rv_out, undo_st, r_filter])
+    forget_btn.click(L(forget_rejected), [project, r_char, r_filter, files_st, idx_st], [*rv_out, r_filter])
+    move_btn.click(L(move_image), [project, r_char, r_filter, files_st, idx_st, move_to], rv_out)
+    save_btn.click(L(save_caption), [files_st, idx_st, r_caption], None)
+
+    t_out = [t_table, t_status, t_selected]
+    t_char.change(L(tag_view), [project, t_char, t_search], t_out)
+    t_search.change(L(tag_view), [project, t_char, t_search], t_out)
+    t_table.select(pick_tag, t_selected, t_selected)
+    t_remove_btn.click(L(tag_remove), [project, t_char, t_selected, t_search], t_out)
+    t_replace_btn.click(L(tag_replace), [project, t_char, t_selected, t_new, t_search], t_out)
+    t_add_btn.click(L(tag_add), [project, t_char, t_add_text, t_search], t_out)
+    t_undo_btn.click(L(tag_undo), [project, t_char, t_search], t_out)
+    t_outfits_btn.click(L(rerun_outfits), [project, t_char, t_search], [*t_out, t_log])
+
+    sum_in, sum_out = [project, e_char, e_out], [e_summary, groups_df]
+    e_char.change(L(save_summary), sum_in, sum_out)
+    e_out.change(L(save_summary), sum_in, sum_out)
+    tabs.select(L(save_summary), sum_in, sum_out)
+    tabs.select(L(delete_hint), project, del_hint)
+    project.change(L(delete_hint), project, del_hint)
+    tabs.select(L(tag_view), [project, t_char, t_search], t_out)
+    long_action(export_btn, stop_export, do_save, [project, e_char, e_out], [export_log]) \
+        .success(L(delete_hint), project, del_hint)
+    del_project_btn.click(L(delete_project), [project, del_confirm], [project, del_confirm])
+
+
 def launch(port=7860, open_browser=True):
+    import webbrowser
+    from .aitk import load_settings
     from .common import setup_runtime
     setup_runtime()
     PROJECTS_DIR.mkdir(exist_ok=True)
     demo = build_ui()
     demo.queue(default_concurrency_limit=1).launch(
-        server_name="127.0.0.1", server_port=port, inbrowser=open_browser,
+        server_name="127.0.0.1", server_port=port, inbrowser=False, prevent_thread_lock=True,
         allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS, head=HEAD)
+    if open_browser:  # the language used last
+        webbrowser.open(f"http://127.0.0.1:{port}/" + ("en" if load_settings().get("ui_lang") == "en" else ""))
+    demo.block_thread()

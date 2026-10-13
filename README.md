@@ -1,171 +1,173 @@
 # animelora
 
-يحوّل حلقات الأنمي إلى مجموعة صور جاهزة لتدريب LoRA لشخصية واحدة (مُعدّة لـ Anima و AI Toolkit).
+Turns anime episodes into a ready-to-train image set for a LoRA of one character (set up for Anima and AI Toolkit).
 
-## الواجهة الرسومية
-انقر مرتين على **`animelora-gui.bat`**، فتُفتح الواجهة في المتصفح على `http://127.0.0.1:7860`. لإيقافها أغلق نافذة الأوامر السوداء.
+## Graphical interface
+Double-click **`animelora-gui.bat`**. The interface opens in your browser at `http://127.0.0.1:7860`. To stop it, close the black command window.
 
-| التبويب | ماذا تفعل فيه |
+**Language:** the interface comes in Arabic (right to left, `http://127.0.0.1:7860/`) and English (`http://127.0.0.1:7860/en`). Switch with the **Arabic | English** links at the top of the page; the language you used last opens on the next start.
+
+| Tab | What you do there |
 |---|---|
-| ١. مسح الحلقات | الصق مسارات الحلقات (أو مجلدًا كاملًا)، ثم اضغط «ابدأ المسح». الشارة تُكتشف تلقائيًا وتظهر أوقاتها في جدول الحلقات. وفي «💾 المساحة على القرص» ترى حجم المشروع وتنظّفه |
-| ٢. اختيار الشخصية | اضغط على بطاقة الشخصية لتحديدها (يمكنك تحديد أكثر من بطاقة) أو ارفع صورًا مرجعية، واكتب كلمة التفعيل، ثم «ابنِ مجموعة الصور». إن اختلطت شخصيتان في بطاقة واحدة، فحدّدها واضغط «✂ قسّم» |
-| ٣. المراجعة | تُفتح تلقائيًا بعد البناء. الصور المعلّمة ⚠ تظهر أولًا. **N** لصورة شخصية أخرى (يتعلّم منها البرنامج)، و**Delete** لصورة سيئة للشخصية نفسها، و**← →** للتنقل، و**Ctrl+Z** للتراجع. ويمكنك تعديل الوصف، أو نقل صورة صُنّفت خطأً، أو عرض زي واحد فقط |
-| ٤. الوسوم | جدول بكل الوسوم وعدد مرات ظهورها. تحذف وسمًا أو تستبدله أو تضيفه في **كل** الأوصاف دفعة واحدة، مع إمكانية التراجع |
-| ٥. حفظ الناتج | تلصق مسار المكان الذي تريده، فيُنشأ فيه مجلد باسم الشخصية فيه الصور وملفات الوصف، وهو مجموعة البيانات التي تدرّب عليها. يتذكر البرنامج آخر مكان، ويرفض الحفظ داخل مجلد المشاريع أو فوق مجلد لم يُنشئه. وترى قبل الحفظ ملخصًا: عدد الصور والأزياء وتوزيع الزوايا، وتنبيهًا إن بقيت صور للمراجعة. وبعد الحفظ يمكنك حذف المشروع كله من مجلد البرنامج لتوفير المساحة، بعد تفعيل خانة التأكيد. (التوازن وملف إعدادات AI Toolkit ما زالا في أمر `export` في سطر الأوامر) |
+| 1. Scan episodes | Paste episode paths (or a whole folder), then press “Start scanning”. The OP/ED is found automatically and its times show in the episodes table. “💾 Disk space” shows the project's size and cleans it up |
+| 2. Pick the character | Click a character's card to select it (you can select more than one) or upload reference images, type the trigger word, then “Build the image set”. If two characters got mixed in one card, select it and press “✂ Split” |
+| 3. Review | Opens by itself after a build. Images marked ⚠ come first. **N** for an image of another character (the program learns from it), **Delete** for a bad image of the character itself, **← →** to move, **Ctrl+Z** to undo. You can also edit a caption, move an image that was put in the wrong group, or show one outfit only |
+| 4. Tags | A table of all tags and how often they appear. Remove, replace or add a tag in **all** captions at once, with undo |
+| 5. Save the result | Paste the path of the place you want; a folder named after the character is made there with the images and caption files: the dataset you train on. The last place is remembered, and saving inside the projects folder or over a folder the program didn't make is refused. Before saving you see a summary: image count, outfits, angle distribution, and a warning if images are still waiting for review. After saving you can delete the whole project from the program folder to free space, once you tick the confirmation. (Balancing and the AI Toolkit config are still in the command-line `export`) |
 
-- **زر الإيقاف:** يظهر تحت زر كل عملية طويلة أثناء تشغيلها: المسح، وإعادة اكتشاف الشارة، والتجميع والتقسيم، والبناء، والتصدير.
-  - بعد الضغط تتوقف العملية خلال ثوانٍ، ويُحذف كل ما ولّدته، ويعود المشروع كما كان قبلها بالضبط.
-  - مسح مشروع جديد أُوقف: يُحذف المشروع كله.
-  - إعادة بناء شخصية أُوقفت: تعود الصور القديمة ومراجعتك كما كانت.
-  - تصدير أُوقف: يعود مجلد البيانات السابق.
-  - الشيء نفسه يحدث إن فشلت العملية بخطأ. وفي سطر الأوامر يعمل **Ctrl+C** بالطريقة نفسها.
-- الحذف لا يمسح الصور نهائيًا، بل ينقلها إلى مجلد `_deleted` داخل مجلد الشخصية.
-- الواجهة تعمل على جهازك فقط (127.0.0.1)، ولا يصل إليها أحد من الشبكة.
+- **Stop button:** shows under the button of every long action while it runs: scanning, finding the OP/ED again, clustering and splitting, building, saving.
+  - After you press it the action stops within seconds, everything it generated is removed, and the project is exactly as it was before.
+  - A stopped scan of a new project: the whole project is removed.
+  - A stopped rebuild of a character: the old images and your review come back as they were.
+  - A stopped save or export: the earlier dataset folder comes back.
+  - The same happens when an action fails with an error. On the command line **Ctrl+C** works the same way.
+- Deleting doesn't erase images for good: they move to a `_deleted` folder inside the character folder.
+- The interface only runs on your computer (127.0.0.1); nobody on the network can reach it.
 
-## سطر الأوامر
+## Command line
 
 ```
-scan    →  تختار رقم الشخصية من الصورة  →  build  →  تراجع الصور  →  export
+scan  →  pick the character's number from the image  →  build  →  review the images  →  export
 ```
 
-### 1) scan: استخراج الإطارات وكشف الشخصيات وتجميعها
+### 1) scan: extract frames, find the characters, cluster them
 ```bat
 animelora.bat scan -p fairytail "D:\anime\ep01.mkv" "D:\anime\ep02.mkv"
 ```
-- تستطيع إعطاءه مجلدًا كاملًا بدل الملفات.
-- **الشارة (OP/ED) تُكتشف تلقائيًا:** البرنامج يقارن الحلقات ببعضها، وكل مقطع يتكرر 40 ثانية أو أكثر يُستبعد. يشمل ذلك الشارة، والفقرة القصيرة بعدها، والملخص الطويل في أول الحلقة إن وُجد.
-  - مع حلقة واحدة فقط، يستخدم الحلقة المجاورة لها في المجلد نفسه مرجعًا للمقارنة دون أن يستخرج منها شيئًا.
-  - لإيقاف الاكتشاف: `--no-auto-skip`. ولتغيير أقل طول للمقطع: `--auto-min 60`.
-- `--skip 0:00-1:30`: أوقات إضافية تتجاهلها يدويًا، وهي اختيارية.
-- تشغيل `scan` مرة أخرى على المشروع نفسه يضيف حلقات جديدة، ويعيد اكتشاف الشارة والتجميع على كل الحلقات.
-- `animelora.bat autoskip -p fairytail`: يعيد اكتشاف الشارة للحلقات الممسوحة. ومع `--off` يلغي الاستبعاد ويستخدم كل الإطارات.
-- النتيجة: `projects\<p>\clusters\overview.jpg`، وفيها صف لكل شخصية برقمها (#1، #2 ...).
-- **أرقام المجموعات تتغير بعد كل scan**، فراجع الصورة من جديد في كل مرة.
-- `animelora.bat split -p fairytail --cluster 3`: يقسم مجموعة اختلطت فيها شخصيات متشابهة. أرقام بقية المجموعات لا تتغير، والأجزاء الجديدة تأخذ أرقامًا في آخر القائمة. ومع `--cut 0.10` يكون التقسيم أشد.
+- You can give it a whole folder instead of files.
+- **The OP/ED is found automatically:** the program compares the episodes with each other and leaves out every part repeated for 40 seconds or more. That covers the opening and ending, the short segment after them, and a long recap at the start of an episode if there is one.
+  - With a single episode it uses the next episode in the same folder as the reference for the comparison, without extracting anything from it.
+  - To turn it off: `--no-auto-skip`. To change the shortest length: `--auto-min 60`.
+- `--skip 0:00-1:30`: more times to ignore by hand, optional.
+- Running `scan` again on the same project adds new episodes, and finds the OP/ED and clusters again over all of them.
+- `animelora.bat autoskip -p fairytail`: finds the OP/ED again for the scanned episodes. With `--off` nothing is left out and every frame is used.
+- The result: `projects\<p>\clusters\overview.jpg`, with a row per character and its number (#1, #2 ...).
+- **Cluster numbers change after every scan**, so look at the image again each time.
+- `animelora.bat split -p fairytail --cluster 3`: splits a cluster where similar characters got mixed. The other clusters keep their numbers; the new parts get numbers at the end of the list. `--cut 0.10` splits harder.
 
-### 2) build: بناء الصور للشخصية
+### 2) build: make the character's images
 ```bat
 animelora.bat build -p fairytail -n natsu_ft --cluster 2 --series "fairy tail"
 ```
-- `--cluster 2 5`: إذا انقسمت الشخصية إلى أكثر من مجموعة (زي مختلف مثلًا) فاكتب كل أرقامها.
-- `--ref مجلد`: بدل رقم المجموعة، ضع من 3 إلى 10 صور للشخصية في مجلد. هذا أفضل للشخصيات الثانوية.
-- `-n`: كلمة التفعيل (trigger)، وهي أيضًا اسم مجلد النتائج.
-- **إعادة البناء سريعة:** يحفظ البرنامج تحليل كل قصّة في `projects\<p>\cache\`: مواضع القص، ودرجات التطابق، والوسوم، وقراءة النصوص، وكشف الوجه، والصور نفسها (العادية والمكبّرة). فإذا غيّرت حد التطابق أو التكرار أو أقل حجم أو الخيارات ثم أعدت البناء، لا يُحلَّل إلا الجديد. ويظهر في السجل عدد الإطارات المأخوذة من التحليل المحفوظ.
-  - الذاكرة مشتركة بين شخصيات المشروع، وتبقى صالحة بعد إضافة حلقات جديدة. وإذا أوقفت البناء في منتصفه يبقى ما حُلِّل منه.
-  - الصور المحفوظة مربوطة بصور `sorted` بروابط صلبة (hard links)، فلا تأخذ مساحة مضاعفة.
-  - تغيير نموذج الوسوم (`--tagger`) يعيد الوسوم وحدها. وحجم التكبير الجديد يعيد التكبير وحده.
-  - لإعادة كل شيء من الصفر: `--fresh`، وفي الواجهة خيار «إعادة التحليل من الصفر» داخل «إعدادات متقدمة».
+- `--cluster 2 5`: if the character got split into more than one cluster (another outfit, say), give all the numbers.
+- `--ref folder`: instead of a cluster number, put 3 to 10 images of the character in a folder. Better for side characters.
+- `-n`: the trigger word, also the name of the output folder.
+- **Rebuilding is fast:** the program saves the analysis of every crop in `projects\<p>\cache\`: crop positions, match scores, tags, text reading, face detection, and the images themselves (as cut and upscaled). When you change the match or duplicate threshold, the smallest size or the options and build again, only what's new gets analysed. The log shows how many frames came from the saved analysis.
+  - The cache is shared by the characters of a project and stays valid after adding episodes. A build stopped halfway keeps what it analysed.
+  - The saved images are hard-linked to the ones in `sorted`, so they take no extra space.
+  - Another tagging model (`--tagger`) only redoes the tags; another upscale size only redoes the upscaling.
+  - To redo everything from scratch: `--fresh`; in the interface, “Analyse from scratch” under “Advanced settings”.
 
-النتيجة في `projects\<p>\characters\<name>\`:
+The result in `projects\<p>\characters\<name>\`:
 ```
-sorted\close_up\front|three_quarter|side|back|above|below\   ← صورة PNG + ملف .txt بالوصف
+sorted\close_up\front|three_quarter|side|back|above|below\   ← a PNG image + a .txt file with its caption
 sorted\upper_body\...   sorted\cowboy_shot\...   sorted\full_body\...
-sorted\_review\...      ← الحالات المشكوك فيها: راجعها أولًا
-report.txt              ← الإحصائيات وتوزيع الزوايا
+sorted\_review\...      ← doubtful cases: check them first
+report.txt              ← statistics and the angle distribution
 ```
 
-### 3) المراجعة
-افتح مجلد `sorted` واحذف أي صورة ليست للشخصية، وابدأ بمجلد `_review`. ويمكنك تعديل ملفات `.txt` يدويًا.
+### 3) review
+Open the `sorted` folder and delete every image that isn't the character, starting with the `_review` folder. You can edit the `.txt` files by hand too.
 
-**التعلّم من الرفض:** في المراجعة نوعان من الحذف:
-- **🚫 ليست الشخصية (N):** صورة شخصية أخرى. يتعلّم منها البرنامج، فيعلّم بـ🚫 الصور الباقية التي تشبهها، وتجدها كلها في «🚫 تشبه ما رفضته» من قائمة العرض. ويستبعد ما يشبهها في كل بناء قادم.
-- **🗑 صورة سيئة (Delete):** صورة للشخصية نفسها لكنها رديئة. تُحذف فقط، ولا يتعلّم منها شيئًا، وإلا لاستبعد صورًا صحيحة للشخصية.
-- **القاعدة:** تُستبعد الصورة إذا كانت أقرب إلى صورة مرفوضة منها إلى صور الشخصية نفسها. في اختبار على Fairy Tail (Gray مع حد تطابق متساهل 0.18): رفض صورة واحدة لـLyon علّم 20 من 22 صورة أخرى له، دون أي صورة لـGray. وبعد رفض صورتين وإعادة البناء خرجت 21 من 23 صورة لـLyon وصورتان لـNatsu، ولم تخرج أي صورة لـGray.
-- ما يتعلّمه البرنامج يبقى بعد إعادة البناء. والتراجع (Ctrl+Z) يلغي التعلّم أيضًا، وزر «نسيان كل الصور المرفوضة» يمسحه كله.
-- الشخصيات المبنية قبل هذا الإصدار تحتاج إعادة بناء مرة واحدة ليعمل الرفض فيها، وهي تأخذ ثوانٍ من التحليل المحفوظ.
-- **من سطر الأوامر:** `animelora.bat reject -p fairytail -n natsu_ft v01_00616.0s_full.png` يرفض صورة ويعرض ما يشبهها. وبلا أسماء صور يعرض الصور الشبيهة فقط، ومع `--clear` ينسى كل الرفض.
+**Learning from rejections:** review has two ways to remove an image:
+- **🚫 Not this character (N):** an image of another character. The program learns from it: it marks the remaining images that look like it with 🚫 (all of them under “🚫 Like what you rejected” in the “Show” list) and leaves out what looks like it in every later build.
+- **🗑 Bad image (Delete):** an image of the character itself that is just bad. It's only removed and nothing is learned from it; otherwise correct images of the character would be left out.
+- **The rule:** an image is left out when it's closer to a rejected image than to the character's own references. In a test on Fairy Tail (Gray at a loose match threshold of 0.18), rejecting one image of Lyon marked 20 of his 22 other images, and no image of Gray. After rejecting two images and building again, 21 of 23 Lyon images and 2 of Natsu were left out, and no image of Gray.
+- What the program learned carries over to rebuilds. Undo (Ctrl+Z) undoes the learning too, and “Forget all images rejected as another character” clears it all.
+- Characters built before this feature need one rebuild for rejections to work; it takes seconds from the saved analysis.
+- **On the command line:** `animelora.bat reject -p fairytail -n natsu_ft v01_00616.0s_full.png` rejects an image and lists the ones that look like it. Without image names it only lists the look-alikes; `--clear` forgets all rejections.
 
-**تعديل الوسوم دفعة واحدة:**
+**Editing tags in bulk:**
 ```bat
 animelora.bat tags -p fairytail -n natsu_ft
 animelora.bat tags -p fairytail -n natsu_ft --remove parody --replace "yellow eyes=brown eyes"
 animelora.bat tags -p fairytail -n natsu_ft --undo
 ```
-الأمر الأول بلا خيارات يعرض كل الوسوم وعددها. والثاني يحذف ويستبدل في كل الأوصاف. والثالث يتراجع عن آخر تعديل.
+The first command, without options, lists all tags and their counts. The second removes and replaces in every caption. The third undoes the last change.
 
-**الأزياء:** إذا ظهرت الشخصية بأكثر من زي، يضيف build وسمًا لكل زي بعد كلمة التفعيل، مثل `natsu_ft_outfit1`. بعد التدريب تستدعي الزي بهذا الوسم.
-- ترى ما يميز كل زي في `report.txt` وفي تبويب الوسوم، ويمكنك إعادة تسميته بالاستبدال، مثل `natsu_ft_outfit1=natsu_ft_coat`.
-- بعد حذف صور في المراجعة أعد الفصل: `animelora.bat outfits -p fairytail -n natsu_ft`. ولإيقاف الفصل عند البناء: `--no-outfits`.
+**Outfits:** when the character appears in more than one outfit, build adds a tag per outfit after the trigger word, such as `natsu_ft_outfit1`. After training you call up the outfit with that tag.
+- `report.txt` and the tags tab show what sets each outfit apart; rename one with a replace, such as `natsu_ft_outfit1=natsu_ft_coat`.
+- After deleting images in review, separate the outfits again: `animelora.bat outfits -p fairytail -n natsu_ft`. To skip outfit separation in a build: `--no-outfits`.
 
-### 4) export: تجهيز مجلد التدريب
+### 4) export: prepare the training folder
 ```bat
 animelora.bat export -p fairytail -n natsu_ft --total 100
 ```
-ينسخ الصور مع ملفات الوصف إلى مجلد واحد هو `train\`. ضع مسار هذا المجلد في AI Toolkit كمجلد بيانات (dataset)، مع امتداد الوصف `txt`.
-- `--total 100`: توازن الزوايا. يُوزَّع العدد على مجلدات الزوايا حسب الجذر التربيعي لحجم كل مجلد: المجلدات الكبيرة (كالأمامية) تُقلَّص أكثر، والنادرة (خلف، جانب) تؤخذ كاملة أو أغلبها، وتبقى الأمامية والثلاثة أرباع هي الأكثر.
-  - داخل كل مجلد تُختار صور متنوعة لكنها نموذجية: كل اختيار يمثل مجموعة من الصور المتشابهة، فلا تُفضَّل الصور الشاذة كالوجوه الكوميدية أو القصّات الغريبة. والأوضح مقدَّم.
-- `--max-per-group 15`: حد أقصى لكل مجلد زاوية.
+Copies the images with their caption files into one folder, `train\`. Point AI Toolkit's dataset at that folder, with caption extension `txt`.
+- `--total 100`: balances the angles. The count is spread over the angle folders by the square root of each folder's size: big folders (front views) shrink the most, rare ones (back, side) are kept fully or mostly, and front and three-quarter views stay the largest.
+  - Inside each folder the picks are varied but typical: each one stands for a group of similar images, so outliers like gag faces or odd crops aren't preferred. Sharper images come first.
+- `--max-per-group 15`: a cap per angle folder.
 
-**مباشرة إلى AI Toolkit مع ملف الإعدادات:**
+**Straight into AI Toolkit, with a config file:**
 ```bat
 animelora.bat export -p fairytail -n natsu_ft --total 60 --aitk "E:\AI-Toolkit-Easy-Install\AI-Toolkit" --dataset-name natsu_dragneel
 ```
-- **الصور:** تُنسخ إلى `AI-Toolkit\datasets\natsu_dragneel\`. والمسار يُحفظ، فتكفي بعدها كتابة `--aitk` وحدها، وفي الواجهة يبقى مكتوبًا.
-- **ملف الإعدادات:** يُولَّد ملف YAML من قالبك (`animelora\aitk_template.yaml`، نسخة من «Anima AI toolkit setteings.yaml»). يُحفظ في مجلد الشخصية وفي `AI-Toolkit\config\`، وفي AI Toolkit تنشئ Job جديدًا وتلصق محتواه في الوضع المتقدم (Advanced).
-- **قيم الحاسبة:** تُحسب حسب عدد الصور المصدَّرة فعلًا، بنفس معادلة `anima-lora-calculator.html`:
-  - `Save Every = Sample Every = round(الصور × الدقات × 10 ÷ 4)`
-  - `Steps = Save Every × (epoch ÷ 10)`
-  - `Max Saves = epoch ÷ 10`
-  - ثابتة: Batch 1، Gradient Accumulation 4، Warmup 100.
-- **خيارات:** `--epochs 50` أو `60` بدل 40، و`--res 512 1024` للدقات. ويظهر في السجل ما تنبه إليه الحاسبة، مثل warmup كبير أو دقة خارج الوصفة.
-- **تُملأ تلقائيًا:** كلمة التفعيل (`trigger_word`)، ومسارات مجلدك، واسم الـ Job بالإصدار التالي (`Natsu_Dragneel_v1` ثم `v2`...)، وأوامر عينات بنفس شكل قالبك: `1girl` أو `1boy` حسب الشخصية، وأمر لكل زي إن وُجدت أزياء، وأمر بلا كلمة التفعيل للمقارنة.
-- **الحماية:** إذا كان في `datasets` مجلد بنفس الاسم لم يُنشئه البرنامج (مثل مجموعاتك القديمة)، يرفض البرنامج الكتابة فيه.
-- **لتعديل الإعدادات الثابتة** (الشبكة، LR، EMA، أوامر الـ negative...): عدّل `animelora\aitk_template.yaml`.
+- **Images:** copied to `AI-Toolkit\datasets\natsu_dragneel\`. The path is remembered, so later `--aitk` alone is enough.
+- **Config file:** a YAML file is made from your template (`animelora\aitk_template.yaml`, a copy of “Anima AI toolkit setteings.yaml”). It's saved in the character folder and in `AI-Toolkit\config\`; in AI Toolkit you create a new Job and paste its content in Advanced mode.
+- **Calculator values:** computed from the number of images actually exported, with the same formula as `anima-lora-calculator.html`:
+  - `Save Every = Sample Every = round(images × resolutions × 10 ÷ 4)`
+  - `Steps = Save Every × (epochs ÷ 10)`
+  - `Max Saves = epochs ÷ 10`
+  - Fixed: Batch 1, Gradient Accumulation 4, Warmup 100.
+- **Options:** `--epochs 50` or `60` instead of 40, and `--res 512 1024` for the resolutions. The log shows what the calculator warns about, such as a large warmup or a resolution outside the recipe.
+- **Filled in automatically:** the trigger word (`trigger_word`), your folder paths, the Job name with the next version (`Natsu_Dragneel_v1`, then `v2`...), and sample prompts shaped like your template's: `1girl` or `1boy` depending on the character, one prompt per outfit if there are outfits, and one without the trigger word for comparison.
+- **Protection:** if `datasets` already holds a folder with that name that the program didn't make (like your older datasets), the program refuses to write into it.
+- **To change the fixed settings** (network, LR, EMA, negative prompts...): edit `animelora\aitk_template.yaml`.
 
-### 5) clean: توفير المساحة
+### 5) clean: save disk space
 ```bat
 animelora.bat clean -p fairytail
 animelora.bat clean -p fairytail --all
 ```
-- **بلا `--all`:** آمن تمامًا. يحذف الإطارات التي لن يقرأها البرنامج مرة أخرى (داخل الشارة، أو بلا شخصيات في المشاريع الممسوحة قبل هذا الإصدار) والصور المصغّرة، والصور المحفوظة في `cache` التي لم يعد يستخدمها أي بناء. فيبقى البناء والتجميع يعملان.
-  - إطارات الشارة المحذوفة لا تعود بعد ذلك. إذا ألغيت الاستبعاد (`autoskip --off`) أو تغيّرت الشارة المكتشفة (بمسح حلقة جديدة مثلًا)، تبقى هذه الإطارات خارج البناء والتجميع، ويظهر عددها في السجل. ولاستعادتها امسح الحلقات من جديد في مشروع جديد.
-- **مع `--all`:** يحذف كل الإطارات وتبقى الصور النهائية، لكن لا يمكن بعده البناء أو التجميع في هذا المشروع. ويحذف معها التحليل المحفوظ (`cache`) لأنه لا فائدة منه بعدها.
+- **Without `--all`:** completely safe. Deletes the frames the program will never read again (inside the OP/ED, or without characters in projects scanned before that was skipped at scan time), the thumbnails, and the images in `cache` no build uses any more. Building and clustering keep working.
+  - OP/ED frames deleted this way don't come back. If you stop leaving the OP/ED out (`autoskip --off`) or the detected OP/ED changes (after scanning a new episode, say), those frames stay out of building and clustering, and the log tells how many. To get them back, scan the episodes again in a new project.
+- **With `--all`:** deletes every frame and keeps the finished images, but the project can't be built or clustered any more. The saved analysis (`cache`) goes too, since it's no use after that.
 
-## ماذا يفعل build تلقائيًا
-| المرحلة | الطريقة |
+## What build does by itself
+| Stage | How |
 |---|---|
-| التعرف على الشخصية | CCIP: يقارن كل شخصية مكتشفة بالمراجع، والحد الافتراضي 0.13 |
-| القص | ثلاث قصّات: الجسم كاملًا، والنصف العلوي، والرأس. وكل قصّة رأس أو نصف يُعاد التحقق من هويتها |
-| الحذف | النصوص على الشاشة (بقراءة OCR فعلية)، والإطارات المظلمة أو الباهتة، وتداخل شخصية أخرى، والرسم المصغّر (chibi) والضبابي |
-| إزالة التكرار | تشابه بصري (WD14 embedding) ≥ 0.80، ويُحتفظ بالأوضح |
-| الوسوم | WD14 EVA02-Large بصيغة Anima: أحرف صغيرة ومسافات بدل `_` |
-| الترتيب | `anime screencap, safe, 1boy, <trigger>, <series>, <tags...>` |
-| الصفات الثابتة | تُحذف من الوصف (لون الشعر والعيون ونوع التسريحة) لتتعلمها كلمة التفعيل. لإبقائها: `--keep-core` |
-| الزاوية | الوسوم تحدد: جانب، خلف، من الأعلى، من الأسفل. وموضع العينين داخل الوجه يفصل «ثلاثة أرباع» عن «أمام» |
-| الأزياء | تجميع صور الجسم حسب وسوم الملابس، ووسم لكل زي إذا وُجد أكثر من زي |
-| التكبير (اختياري) | `--upscale`: كل صورة أصغر من 1024 بكسل تُكبَّر بنموذج CDC المخصص للأنمي، بحد أقصى 4 أضعاف. يحدث ذلك بعد الفلترة وإزالة التكرار، فلا يضيع وقت على صور ستُحذف |
+| Recognising the character | CCIP: compares every detected character with the references; the default threshold is 0.13 |
+| Cropping | Three crops: the whole body, the upper body and the head. Every head or upper-body crop is checked for identity again |
+| Leaving out | Text on screen (by actually reading it with OCR), dark or faded frames, another character overlapping, chibi and blurry drawings |
+| Removing duplicates | Visual similarity (WD14 embedding) ≥ 0.80; the sharpest image is kept |
+| Tags | WD14 EVA02-Large in Anima's style: lowercase, spaces instead of `_` |
+| Order | `anime screencap, safe, 1boy, <trigger>, <series>, <tags...>` |
+| Fixed features | Hair and eye colours and the hairstyle are removed from the captions so the trigger word learns them. To keep them: `--keep-core` |
+| Angle | Tags give side, back, from above, from below. Where the eyes sit inside the face separates “three-quarter” from “front” |
+| Outfits | Body crops grouped by their clothing tags, with a tag per outfit when there is more than one |
+| Upscaling (optional) | `--upscale`: every image smaller than 1024 pixels is enlarged with the CDC anime upscaler, at most 4×. It runs after filtering and removing duplicates, so no time goes into images that get dropped |
 
-## خيارات مفيدة
-- في `report.txt` ستجد توزيع درجات التطابق. إذا رأيت شخصيات أخرى فاخفض `--threshold` (مثل 0.11)، وإذا كانت الصور قليلة فارفعه (مثل 0.15).
-- `--sim 0.85`: لإبقاء صور أكثر تشابهًا، و0.75 لتنويع أكثر صرامة.
-- `--min-size 512`: لرفض القصّات الصغيرة. القيمة الافتراضية 448، وهي الجذر التربيعي للمساحة. ومع `--upscale` تصبح 320، لأن التكبير يجعل القصّات الصغيرة صالحة.
-- `--upscale --upscale-to 768`: اجعل الحجم المستهدف بدقة التدريب في AI Toolkit.
-  - التكبير يوضّح الخطوط، لكنه لا يضيف تفاصيل لم يرسمها الرسامون، فالشخصيات البعيدة مرسومة أبسط في الأصل.
-  - في تبويب المراجعة يظهر معامل التكبير لكل صورة (مثل «مُكبّرة ×3.2»)، فراجع الصور ذات المعامل الكبير.
-  - كلفة الوقت: نحو دقيقة إضافية لكل 100 صورة.
-- `--save-dropped`: يحفظ الصور المحذوفة في `_dropped\<السبب>\` لتتأكد من عمل الفلاتر.
-- `--overwrite`: لإعادة البناء، وهذا **يمسح** مجلد `sorted` ومعه مراجعتك اليدوية.
+## Useful options
+- `report.txt` shows the distribution of match scores. If you see other characters, lower `--threshold` (e.g. 0.11); if there are too few images, raise it (e.g. 0.15).
+- `--sim 0.85`: keeps more similar images; 0.75 removes duplicates more strictly.
+- `--min-size 512`: rejects small crops. The default is 448, the square root of the area. With `--upscale` it becomes 320, since upscaling makes small crops usable.
+- `--upscale --upscale-to 768`: use your AI Toolkit training resolution as the target size.
+  - Upscaling sharpens the lines but can't add details the animators didn't draw; characters far away are drawn simpler to begin with.
+  - The review tab shows each image's upscale factor (e.g. “upscaled ×3.2”); check the ones with a big factor.
+  - Time cost: about one extra minute per 100 images.
+- `--save-dropped`: saves the left-out images in `_dropped\<reason>\` so you can check the filters.
+- `--overwrite`: to build again; this **clears** the `sorted` folder and your manual review with it.
 
-## الأداء (RTX 5070 Ti)
-- scan: نحو 3.5 دقائق لكل حلقة مدتها 24 دقيقة بدقة 1080p، بعد أن كانت أكثر من 6 دقائق.
-  - كشف الشخصيات يعمل أثناء فك ترميز الحلقة، في 3 مسارات متوازية، فينتهي الاستخراج والكشف معًا في 144 ثانية بدل 293.
-  - فك الترميز وحده يأخذ 58 ثانية، وهو الحد الأدنى. والباقي اكتشاف الشارة والتجميع.
-  - إذا كان في المشروع حلقة واحدة، يفحص البرنامج الحلقة المجاورة لها ليكتشف الشارة. صار هذا الفحص يفك نحو نصف الإطارات فقط (يتخطى الإطارات التي لا يعتمد عليها غيرها)، فيأخذ 33–44 ثانية بدل 57–68 لحلقة Fairy Tail، والشارة المكتشفة هي نفسها.
-  - كل مسار يحمّل نسخته من نماذج الكشف، فيصل استهلاك ذاكرة كرت الشاشة أثناء المسح إلى نحو 8GB.
-- build أول مرة: من دقيقة إلى 3 دقائق حسب عدد صور الشخصية، ومع التكبير أكثر.
-  - أطول مرحلة فيه قراءة النصوص على الشاشة، خاصة في الأنمي الذي تكثر فيه الكتابة. في One Room كانت نصف وقت البناء.
-  - كان كشف النص يعمل مرتين في كل قصّة فيها نص، فصار مرة واحدة. وصارت ملفات PNG تُحفظ بضغط أخف: أسرع بمرتين، وأكبر بـ7% فقط، وبلا أي فرق في الصورة.
-  - النتيجة في One Room: 162 ثانية بدل 197، والصور والأوصاف متطابقة.
-- إعادة البناء من التحليل المحفوظ (اختبار على حلقة واحدة، 614 إطارًا للشخصية):
-  - بالإعدادات نفسها: 6 ثوانٍ بدل 194، ومع التكبير 6.5 ثانية بدل 270.
-  - حد تطابق 0.15 وتكرار 0.75 وأقل حجم 384: 32 ثانية بدل 202، لأن 86 إطارًا جديدًا فقط احتاجت تحليلًا.
-- الإطارات المستخرجة تأخذ مئات الميغابايت لكل حلقة في `projects\<p>\frames` (حلقة Fairy Tail 16 أخذت 916MB قبل التحسين التالي)، ويمكنك حذفها بعد الانتهاء من المشروع.
-  - المسح يحفظ فقط الإطارات التي فيها شخصية كبيرة بما يكفي للتعرف عليها، لأن البرنامج لا يفتح غيرها أبدًا. مثال: في ثلاث حلقات من One Room حُفظ 715 إطارًا (275MB) بدل 938 (342MB).
-  - إطارات الشارة تُحفظ، لأن الشارة تُكتشف بعد المسح، ويمكن إلغاء استبعادها بـ`autoskip --off`. والتنظيف الآمن يحذفها.
+## Performance (RTX 5070 Ti)
+- scan: about 3.5 minutes per 24-minute 1080p episode, down from more than 6.
+  - Character detection runs while the episode is being decoded, on 3 parallel threads, so extracting and detecting together take 144 seconds instead of 293.
+  - Decoding alone takes 58 seconds, the floor. The rest is finding the OP/ED and clustering.
+  - When a project has a single episode, the program checks the next episode to find the OP/ED. That check now decodes only about half the frames (it skips the frames no other frame depends on): 33–44 seconds instead of 57–68 for a Fairy Tail episode, with the same OP/ED found.
+  - Every thread loads its own copy of the detection models, so the graphics card uses up to about 8 GB during a scan.
+- First build: 1 to 3 minutes depending on how many images the character has, more with upscaling.
+  - Its longest stage is reading text on screen, especially in anime with a lot of writing; in One Room it was half the build time.
+  - Text detection used to run twice on every crop with text; it now runs once. PNG files are saved with lighter compression: twice as fast, only 7% bigger, and no difference in the image.
+  - The result on One Room: 162 seconds instead of 197, with identical images and captions.
+- Rebuilding from the saved analysis (a test on one episode, 614 frames of the character):
+  - Same settings: 6 seconds instead of 194; with upscaling 6.5 seconds instead of 270.
+  - Match threshold 0.15, duplicate threshold 0.75, smallest size 384: 32 seconds instead of 202, since only 86 new frames needed analysis.
+- Extracted frames take hundreds of megabytes per episode in `projects\<p>\frames` (Fairy Tail episode 16 took 916 MB before the change below); you can delete them once the project is done.
+  - A scan only keeps the frames with a character big enough to recognise, since the program never opens the others. Example: three One Room episodes kept 715 frames (275 MB) instead of 938 (342 MB).
+  - OP/ED frames are kept, because the OP/ED is found after the scan and `autoskip --off` can bring them back. A safe clean deletes them.
 
-## التثبيت على جهاز جديد
+## Installing on a new computer
 ```bat
 py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
-تُحمَّل النماذج تلقائيًا من HuggingFace عند أول تشغيل.
+The models download from HuggingFace by themselves on the first run.
