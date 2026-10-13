@@ -1,0 +1,41 @@
+"""CCIP character-identity features and distances (deepghs/imgutils).
+
+CCIP answers "are these two images the same anime character?". The difference model is
+pairwise-independent, so large matrices are computed in blocks to bound GPU memory.
+"""
+import numpy as np
+from imgutils.metrics import ccip_batch_differences, ccip_batch_extract_features, ccip_default_threshold
+
+from .cancel import check as check_cancel
+
+
+def ccip_features(images, batch=32) -> np.ndarray:
+    out = []
+    for i in range(0, len(images), batch):
+        check_cancel()
+        out.append(ccip_batch_extract_features(images[i:i + batch]))
+    return np.concatenate(out).astype(np.float32)
+
+
+def ccip_cross(A: np.ndarray, B: np.ndarray, block=1024) -> np.ndarray:
+    """CCIP difference between every row of A (n,d) and every row of B (m,d) -> (n,m). Lower = more alike."""
+    out = np.empty((len(A), len(B)), np.float32)
+    for i in range(0, len(A), block):
+        a = A[i:i + block]
+        for j in range(0, len(B), block):
+            check_cancel()
+            b = B[j:j + block]
+            m = ccip_batch_differences(list(np.concatenate([a, b])))
+            out[i:i + len(a), j:j + len(b)] = m[:len(a), len(a):]
+    return out
+
+
+def ccip_matrix(F: np.ndarray) -> np.ndarray:
+    D = ccip_cross(F, F)
+    D = (D + D.T) / 2
+    np.fill_diagonal(D, 0)
+    return np.clip(D, 0, None)
+
+
+def default_threshold() -> float:
+    return float(ccip_default_threshold())
