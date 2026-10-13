@@ -1,6 +1,5 @@
 import contextlib
 import contextvars
-import functools
 
 LANGS = {"ar": "العربية", "en": "English"}
 _current = contextvars.ContextVar("ui_lang", default="en")
@@ -17,14 +16,6 @@ def use(language):
         yield
     finally:
         _current.reset(token)
-
-
-def bound(language, fn):
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        with use(language):
-            return fn(*args, **kwargs)
-    return wrapper
 
 
 def t(text: str, **values) -> str:

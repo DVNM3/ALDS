@@ -14,7 +14,7 @@ The models download from HuggingFace by themselves on the first run.
 ## Graphical interface
 Double-click **`animelora-gui.bat`**. The interface opens in your browser at `http://127.0.0.1:7860`. To stop it, close the black command window.
 
-**Language:** the interface comes in Arabic (right to left, `http://127.0.0.1:7860/`) and English (`http://127.0.0.1:7860/en`). Switch with the **Arabic | English** links at the top of the page; the language you used last opens on the next start.
+**Language:** the interface comes in Arabic (right to left) and English. The **العربية / English** button at the top switches it in place, without losing anything you did on the page; the language you used last opens on the next start.
 
 | Tab | What you do there |
 |---|---|

@@ -1,5 +1,7 @@
 import contextlib
+import functools
 import io
+import json
 import os
 import re
 import shutil
@@ -8,12 +10,13 @@ from pathlib import Path
 
 os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
 import gradio as gr
+import pandas as pd
 from PIL import Image
 
 from . import cancel, txn
 from .cancel import Cancelled
 from .common import PROJECTS_DIR, Project, mmss, parse_ranges, safe_name
-from .i18n import AR, LANGS, bound, lang, t, use
+from .i18n import AR, LANGS, lang, t, use
 
 
 def ltr(text) -> str:
@@ -59,18 +62,29 @@ html[lang="ar"] .wrap.default > span.error::before { content: "%s"; }
 """ % AR["Error"] + "".join(f'html[lang="ar"] .toast-title.{kind}::before {{ content: "{AR[word]}"; }}\n'
                             for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info")))
 
-HEAD ="""<script>
-const setDir = () => {
-  const en = /\\/en\\/?$/.test(location.pathname);
-  document.documentElement.dir = en ? 'ltr' : 'rtl';
-  document.documentElement.lang = en ? 'en' : 'ar';
+HEAD = """<script>
+window.animeloraLang = (l) => {
+  document.documentElement.lang = l;
+  document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+  try { localStorage.setItem('animelora-lang', l); } catch (e) {}
 };
-setDir();
-window.addEventListener('popstate', setDir);
-for (const m of ['pushState', 'replaceState']) {
-  const orig = history[m];
-  history[m] = function () { const r = orig.apply(this, arguments); setDir(); return r; };
-}
+let storedLang = null;
+try { storedLang = localStorage.getItem('animelora-lang'); } catch (e) {}
+window.animeloraLang(storedLang || '__LANG__');
+window.animeloraSwitch = (v) => {
+  const d = JSON.parse(v);
+  window.animeloraLang(d.lang);
+  const names = new Map();
+  for (const [en, ar] of d.tabs) {
+    const name = d.lang === 'ar' ? ar : en;
+    names.set(en, name);
+    names.set(ar, name);
+  }
+  document.querySelectorAll('button').forEach((b) => b.childNodes.forEach((n) => {
+    const key = n.nodeType === 3 ? n.nodeValue.trim() : null;
+    if (key && names.has(key)) n.nodeValue = names.get(key);
+  }));
+};
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'textarea' || tag === 'input') return;
@@ -83,6 +97,41 @@ document.addEventListener('keydown', (e) => {
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { click('btn-undo'); click('btn-tag-undo'); }
 });
 </script>"""
+
+VIDEO_COLUMNS = ["#", "Episode", "Length (min)", "Frames", "Left out automatically"]
+TAG_COLUMNS = ["Tag", "Count", "%"]
+GROUP_COLUMNS = ["Shot", "Angle", "Count"]
+_session_langs = {}
+
+
+def saved_lang():
+    from .aitk import load_settings
+    return load_settings().get("ui_lang", "ar")
+
+
+def _session():
+    from gradio.context import LocalContext
+    return getattr(LocalContext.request.get(None), "session_hash", None)
+
+
+def localized(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with use(_session_langs.get(_session()) or saved_lang()):
+            return fn(*args, **kwargs)
+    return wrapper
+
+
+def translated(text):
+    if callable(text):
+        return text()
+    if isinstance(text, list):
+        return [t(x) if x in AR else x for x in text]
+    return t(text)
+
+
+def table(rows, columns):
+    return pd.DataFrame(rows, columns=translated(columns))
 
 
 def projects():
@@ -161,15 +210,13 @@ def press_stop():
 
 
 def videos_table(pname):
-    if not pname:
-        return []
-    proj = Project(safe_name(pname)).load("project.json", {"videos": []})
+    proj = Project(safe_name(pname)).load("project.json", {"videos": []}) if pname else {"videos": []}
     rows = []
     for v in proj["videos"]:
         segs = " | ".join(f"{lab} {mmss(s)}–{mmss(e)}" for s, e, lab in v.get("auto_skip", []))
         segs = ltr(segs) if segs else "—"
         rows.append([v["id"], v["name"], round(v.get("duration", 0) / 60, 1), v.get("kept_frames", 0), segs])
-    return rows
+    return table(rows, VIDEO_COLUMNS)
 
 
 def clusters_view(pname):
@@ -476,13 +523,12 @@ def load_review(pname, char, flt):
 
 
 def change_char(pname, char):
-    return (gr.update(choices=filter_choices(pname, char), value="all"), move_choices(),
+    return (gr.update(choices=filter_choices(pname, char), value="all"), gr.update(choices=move_choices()),
             *load_review(pname, char, "all"))
 
 
 def move_choices():
-    return gr.update(choices=[(t("{shot} · {angle}", shot=shot_name(f), angle=angle_name(v)), f"{f}/{v}")
-                              for f in FRAMING for v in VIEW])
+    return [(t("{shot} · {angle}", shot=shot_name(f), angle=angle_name(v)), f"{f}/{v}") for f in FRAMING for v in VIEW]
 
 
 def select_image(pname, char, files, evt: gr.SelectData):
@@ -604,7 +650,7 @@ def _tag_state(pname, char, query=""):
 
 def tag_view(pname, char, query=""):
     rows, status, tags = _tag_state(pname, char, query)
-    return rows, status, gr.update(choices=tags, value=[])
+    return table(rows, TAG_COLUMNS), status, gr.update(choices=tags, value=[])
 
 
 def pick_tag(selected, evt: gr.SelectData):
@@ -685,12 +731,12 @@ def save_target(char, parent):
 def save_summary(pname, char, parent):
     from .export import group_of as export_group
     if not pname or not char:
-        return t("Pick a character."), []
+        return t("Pick a character."), table([], GROUP_COLUMNS)
     p = Project(safe_name(pname))
     root = sorted_root(pname, char)
     files = sorted(root.rglob("*.png")) if root.exists() else []
     if not files:
-        return t("There are no images for this character. Build it first (tab 2)."), []
+        return t("There are no images for this character. Build it first (tab 2)."), table([], GROUP_COLUMNS)
     build = p.load(f"characters/{char}/build.json", {})
     n_review = sum(is_review(root, f) for f in files)
     alike = look_alikes(pname, char)
@@ -725,7 +771,7 @@ def save_summary(pname, char, parent):
         fr, vw = (g.split("/") + [""])[:2]
         rows.append([shot_name(fr), angle_name(vw), counts[g]])
     rows.append([t("Total"), "", len(files)])
-    return "\n".join(lines), rows
+    return "\n".join(lines), table(rows, GROUP_COLUMNS)
 
 
 def do_save(pname, char, parent):
@@ -781,31 +827,58 @@ def delete_project(pname, confirm):
     return gr.update(choices=left, value=left[0] if left else None), gr.update(value=False)
 
 
-def remember_language():
-    from .aitk import save_settings
-    save_settings(ui_lang=lang())
+def title_md(gpu):
+    return ("## " + t("animelora — LoRA datasets of a character from anime episodes") + "\n"
+            + (t("🟢 The graphics card is used (CUDA)") if gpu else t("🔴 Running on the CPU only (slow)")))
 
 
-def build_ui():
+def other_language():
+    return LANGS["en" if lang() == "ar" else "ar"]
+
+
+def static_texts(demo):
+    texts = {}
+    for block in demo.blocks.values():
+        props = {}
+        if isinstance(getattr(block, "label", None), str) and block.label in AR:
+            props["label"] = block.label
+        if isinstance(block, (gr.Button, gr.Markdown)) and isinstance(block.value, str) and block.value in AR:
+            props["value"] = block.value
+        if isinstance(block, gr.Dataframe):
+            props["headers"] = list(block.headers)
+        if props:
+            texts[block._id] = (block, props)
+    return texts
+
+
+def apply_texts(texts, language):
+    with use(language):
+        for block, props in texts.values():
+            for prop, text in props.items():
+                setattr(block, prop, translated(text))
+                if prop == "headers":
+                    block.value = block.postprocess(table([], text))
+
+
+def build_ui(language):
     import onnxruntime as ort
     gpu = "CUDAExecutionProvider" in ort.get_available_providers()
-    with gr.Blocks(title="animelora", analytics_enabled=False) as demo, use("ar"):
-        build_page(demo, "ar", gpu)
-    with demo.route(LANGS["en"], "en"), use("en"):
-        build_page(demo, "en", gpu)
+    with gr.Blocks(title="animelora", analytics_enabled=False) as demo, use("en"):
+        texts = build_page(demo, gpu)
+    apply_texts(texts, language)
     return demo
 
 
-def build_page(demo, language, gpu):
+def build_page(demo, gpu):
     from .aitk import load_settings
-    L = lambda fn: bound(language, fn)
-    gr.Navbar(main_page_name=LANGS["ar"])
-    gr.Markdown("## " + t("animelora — LoRA datasets of a character from anime episodes") + "\n"
-                + (t("🟢 The graphics card is used (CUDA)") if gpu else t("🔴 Running on the CPU only (slow)")))
+    L = localized
+    title = gr.Markdown(title_md(gpu))
     with gr.Row():
         project = gr.Dropdown(choices=projects(), value=(projects() or [None])[0], allow_custom_value=True,
                               label=t("Project (pick one or type a new name)"), scale=4)
         refresh = gr.Button(t("🔄 Refresh"), scale=1)
+        lang_btn = gr.Button(other_language(), scale=1)
+        lang_box = gr.Textbox(visible=False)
 
     with gr.Tabs() as tabs:
         with gr.Tab(t("1. Scan episodes"), id="scan"):
@@ -832,9 +905,8 @@ def build_page(demo, language, gpu):
                     scan_btn = gr.Button(t("▶ Start scanning"), variant="primary")
                     stop_scan = gr.Button(stop_label(), variant="stop", visible=False)
                 with gr.Column(scale=3):
-                    vids_df = gr.Dataframe(headers=["#", t("Episode"), t("Length (min)"), t("Frames"),
-                                                    t("Left out automatically")],
-                                           interactive=False, wrap=True, label=t("Episodes scanned in this project"),
+                    vids_df = gr.Dataframe(headers=VIDEO_COLUMNS, interactive=False, wrap=True,
+                                           label=t("Episodes scanned in this project"),
                                            column_widths=["5%", "31%", "13%", "13%", "38%"])
                     with gr.Accordion(t("💾 Disk space"), open=False):
                         usage = gr.Markdown()
@@ -942,7 +1014,7 @@ def build_page(demo, language, gpu):
                     with gr.Row():
                         t_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
                         t_search = gr.Textbox(label=t("Search"), elem_classes="ltr", scale=2)
-                    t_table = gr.Dataframe(headers=[t("Tag"), t("Count"), "%"], interactive=False, max_height=620,
+                    t_table = gr.Dataframe(headers=TAG_COLUMNS, interactive=False, max_height=620,
                                            column_widths=["70%", "15%", "15%"])
                 with gr.Column(scale=2):
                     t_status = gr.Markdown()
@@ -977,7 +1049,7 @@ def build_page(demo, language, gpu):
                     export_log = gr.Textbox(lines=6, label=t("Log"), elem_id="log")
                 with gr.Column(scale=2):
                     e_summary = gr.Markdown()
-                    groups_df = gr.Dataframe(headers=[t("Shot"), t("Angle"), t("Count")], interactive=False,
+                    groups_df = gr.Dataframe(headers=GROUP_COLUMNS, interactive=False,
                                              label=t("Distribution"))
             with gr.Accordion(t("🗑 Delete the project from the program folder (after saving)"), open=False):
                 del_hint = gr.Markdown()
@@ -987,14 +1059,6 @@ def build_page(demo, language, gpu):
     proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
     project.change(L(load_project), project, proj_outputs)
     refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project, [project, *proj_outputs])
-
-    def init_page(p):
-        names = projects()
-        p = p if p in names else (names[0] if names else p)
-        return (gr.update(choices=names, value=p), *load_project(p))
-
-    demo.load(L(init_page), project, [project, *proj_outputs])
-    demo.load(L(remember_language), None, None)
 
     def long_action(btn, stop, fn, inputs, outputs):
         ev = btn.click(L(start_ui), None, stop, queue=False).then(L(fn), inputs, outputs, concurrency_id="gpu")
@@ -1058,17 +1122,70 @@ def build_page(demo, language, gpu):
         .success(L(delete_hint), project, del_hint)
     del_project_btn.click(L(delete_project), [project, del_confirm], [project, del_confirm])
 
+    texts = static_texts(demo)
+    for block, props in ((title, {"value": lambda: title_md(gpu)}), (lang_btn, {"value": other_language}),
+                         (opts, {"choices": build_options})):
+        texts.setdefault(block._id, (block, {}))[1].update(props)
+    refreshed = [vids_df, clusters_gal, usage, r_filter, move_to, r_info, r_stats, t_table, t_status, e_summary,
+                 groups_df, del_hint]
+    switch_outputs = [block for block, _ in texts.values()] + [b for b in refreshed if b._id not in texts]
+    tab_names = [(props["label"], AR[props["label"]]) for block, props in texts.values()
+                 if isinstance(block, gr.Tab)]
+    set_direction = "(v) => window.animeloraSwitch(v)"
+
+    def page_language(language):
+        return json.dumps({"lang": language, "tabs": tab_names}, ensure_ascii=False)
+
+    def init_page(p):
+        _session_langs[_session()] = lang()
+        names = projects()
+        p = p if p in names else (names[0] if names else p)
+        return (page_language(lang()), gr.update(choices=names, value=p), *load_project(p))
+
+    demo.load(L(init_page), project, [lang_box, project, *proj_outputs]).then(None, lang_box, None, js=set_direction)
+
+    def switch_language(pname, char, files, idx, tchar, query, echar, parent):
+        from .aitk import save_settings
+        new = "en" if lang() == "ar" else "ar"
+        _session_langs[_session()] = new
+        save_settings(ui_lang=new)
+        apply_texts(texts, new)
+        demo.config = demo.get_config_file()
+        with use(new):
+            updates = {block._id: {prop: translated(text) for prop, text in props.items()}
+                       for block, props in texts.values()}
+            rows, status, _ = _tag_state(pname, tchar, query)
+            summary, groups = save_summary(pname, echar, parent)
+            for block, kw in ((vids_df, {"value": videos_table(pname)}),
+                              (clusters_gal, {"value": clusters_view(pname)[0]}),
+                              (usage, {"value": usage_md(pname)}),
+                              (r_filter, {"choices": filter_choices(pname, char)}),
+                              (move_to, {"choices": move_choices()}),
+                              (r_info, {"value": panel(pname, char, files, idx)[2]}),
+                              (r_stats, {"value": stats_text(pname, char)}),
+                              (t_table, {"value": table(rows, TAG_COLUMNS)}),
+                              (t_status, {"value": status}),
+                              (e_summary, {"value": summary}),
+                              (groups_df, {"value": groups}),
+                              (del_hint, {"value": delete_hint(pname)})):
+                updates.setdefault(block._id, {}).update(kw)
+        return [page_language(new)] + [gr.update(**updates[block._id]) for block in switch_outputs]
+
+    lang_btn.click(L(switch_language), [project, r_char, files_st, idx_st, t_char, t_search, e_char, e_out],
+                   [lang_box, *switch_outputs]).then(None, lang_box, None, js=set_direction)
+    return texts
+
 
 def launch(port=7860, open_browser=True):
     import webbrowser
-    from .aitk import load_settings
     from .common import setup_runtime
     setup_runtime()
     PROJECTS_DIR.mkdir(exist_ok=True)
-    demo = build_ui()
+    language = saved_lang()
+    demo = build_ui(language)
     demo.queue(default_concurrency_limit=1).launch(
         server_name="127.0.0.1", server_port=port, inbrowser=False, prevent_thread_lock=True,
-        allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS, head=HEAD)
+        allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS, head=HEAD.replace("__LANG__", language))
     if open_browser:
-        webbrowser.open(f"http://127.0.0.1:{port}/" + ("en" if load_settings().get("ui_lang") == "en" else ""))
+        webbrowser.open(f"http://127.0.0.1:{port}/")
     demo.block_thread()
