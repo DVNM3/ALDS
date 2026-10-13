@@ -2,6 +2,8 @@
 
 Turns anime episodes into a ready-to-train image set for a LoRA of one character (set up for Anima and AI Toolkit).
 
+Project page: https://dvnm3.github.io/animelora/
+
 ## Installing
 ```bat
 py -3.12 -m venv .venv
@@ -136,3 +138,6 @@ animelora.bat clean -p fairytail --all
 - `--upscale --upscale-to 768`: use your training resolution as the target size.
 - `--save-dropped`: saves the left-out images in `_dropped\<reason>\` so you can check the filters.
 - `--overwrite`: builds again and **clears** the `sorted` folder and your review with it.
+
+## License
+MIT, see [LICENSE](LICENSE).

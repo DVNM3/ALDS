@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>animelora</title>
+<meta name="description" content="Turn anime episodes into a ready-to-train LoRA dataset for one character, for Anima and AI Toolkit.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236d5efc'/%3E%3Ctext x='16' y='22' font-family='Arial' font-size='17' font-weight='700' fill='white' text-anchor='middle'%3Eal%3C/text%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f7f7fb;
+  --surface: #ffffff;
+  --text: #1c1b29;
+  --muted: #5d5b72;
+  --line: #e4e3ef;
+  --accent: #6d5efc;
+  --accent-soft: #eeecff;
+  --accent-text: #ffffff;
+  --code-bg: #f1f0f8;
+  --shadow: 0 1px 2px rgba(28, 27, 41, .05), 0 6px 24px rgba(28, 27, 41, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12111a;
+    --surface: #1b1a26;
+    --text: #ecebf5;
+    --muted: #a3a1b8;
+    --line: #2d2b3d;
+    --accent: #8c80ff;
+    --accent-soft: #262245;
+    --accent-text: #12111a;
+    --code-bg: #232132;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 "Segoe UI", system-ui, -apple-system, "Noto Sans", "Noto Sans Arabic", Tahoma, sans-serif;
+}
+html[lang="en"] .ar, html[lang="ar"] .en { display: none !important; }
+a { color: var(--accent); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+header {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.bar { display: flex; align-items: center; gap: 20px; height: 60px; }
+.logo { font-weight: 700; font-size: 19px; color: var(--text); text-decoration: none; letter-spacing: -.01em; }
+.logo span { color: var(--accent); }
+nav { display: flex; gap: 18px; margin-inline-start: auto; }
+nav a { color: var(--muted); text-decoration: none; font-size: 15px; }
+nav a:hover { color: var(--text); }
+.lang {
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  border-radius: 999px; padding: 5px 14px; font: inherit; font-size: 14px; cursor: pointer;
+}
+.hero { padding: 72px 0 48px; text-align: center; }
+.hero h1 { font-size: clamp(34px, 6vw, 56px); line-height: 1.1; margin: 0 0 18px; letter-spacing: -.02em; }
+.hero p { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 auto 30px; }
+.buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn {
+  display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 600;
+  text-decoration: none; border: 1px solid var(--line); color: var(--text); background: var(--surface);
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 28px; }
+.badge { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; }
+section { padding: 56px 0; }
+h2 { font-size: 30px; margin: 0 0 8px; letter-spacing: -.01em; }
+.lead { color: var(--muted); margin: 0 0 32px; max-width: 680px; }
+.steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; counter-reset: step; }
+.step {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 20px 18px; box-shadow: var(--shadow); position: relative;
+}
+.step::before {
+  counter-increment: step; content: counter(step);
+  display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; margin-bottom: 12px;
+}
+.step h3, .card h3 { margin: 0 0 6px; font-size: 17px; }
+.step p, .card p { margin: 0; color: var(--muted); font-size: 15px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; box-shadow: var(--shadow); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+pre, code { font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; direction: ltr; unicode-bidi: isolate; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+  padding: 16px 18px; overflow-x: auto; font-size: 14px; line-height: 1.55; margin: 0 0 16px; text-align: left;
+}
+code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; font-size: .92em; }
+pre code { background: none; padding: 0; }
+.dim { color: var(--muted); }
+ol.install { padding-inline-start: 22px; margin: 0; }
+ol.install li { margin-bottom: 18px; }
+ol.install li::marker { color: var(--accent); font-weight: 700; }
+footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+@media (max-width: 900px) {
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .split { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  nav { display: none; }
+  .lang { margin-inline-start: auto; }
+  .steps, .grid { grid-template-columns: minmax(0, 1fr); }
+  .hero { padding: 48px 0 32px; }
+  .hero p { font-size: 17px; }
+  section { padding: 40px 0; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap bar">
+    <a class="logo" href="#">anime<span>lora</span></a>
+    <nav>
+      <a href="#how"><span class="en">How it works</span><span class="ar">طريقة العمل</span></a>
+      <a href="#features"><span class="en">Features</span><span class="ar">المزايا</span></a>
+      <a href="#install"><span class="en">Install</span><span class="ar">التثبيت</span></a>
+      <a href="https://github.com/DVNM3/animelora">GitHub</a>
+    </nav>
+    <button class="lang" id="lang" type="button"><span class="en">العربية</span><span class="ar">English</span></button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1 class="en">From anime episodes to a LoRA dataset</h1>
+    <h1 class="ar">من حلقات الأنمي إلى صور جاهزة لتدريب LoRA</h1>
+    <p class="en">animelora finds one character in your episodes, crops, filters, tags and sorts the images, and hands you a folder ready to train on, made for Anima and AI Toolkit.</p>
+    <p class="ar">يجد animelora الشخصية التي تريدها في الحلقات، ثم يقصّ صورها وينقّيها ويصفها ويرتّبها، ويعطيك مجلدًا جاهزًا للتدريب، مُعدًّا لـ Anima و AI Toolkit.</p>
+    <div class="buttons">
+      <a class="btn primary" href="https://github.com/DVNM3/animelora/archive/refs/heads/main.zip"><span class="en">Download</span><span class="ar">تحميل</span></a>
+      <a class="btn" href="https://github.com/DVNM3/animelora"><span class="en">Source on GitHub</span><span class="ar">الكود على GitHub</span></a>
+    </div>
+    <div class="badges">
+      <span class="badge">Windows</span>
+      <span class="badge">Python 3.12</span>
+      <span class="badge"><span class="en">NVIDIA GPU</span><span class="ar">كرت NVIDIA</span></span>
+      <span class="badge"><span class="en">Arabic &amp; English interface</span><span class="ar">واجهة عربية وإنجليزية</span></span>
+      <span class="badge">MIT</span>
+    </div>
+  </div>
+
+  <section id="how">
+    <div class="wrap">
+      <h2 class="en">How it works</h2>
+      <h2 class="ar">طريقة العمل</h2>
+      <p class="lead en">Five tabs in a browser interface that runs only on your computer.</p>
+      <p class="lead ar">خمسة تبويبات في واجهة تفتح في المتصفح وتعمل على جهازك فقط.</p>
+      <div class="steps">
+        <div class="step">
+          <h3 class="en">Scan episodes</h3><h3 class="ar">مسح الحلقات</h3>
+          <p class="en">Paste episode paths or a folder. Frames are extracted and every character is found and grouped.</p>
+          <p class="ar">الصق مسارات الحلقات أو مجلدها. تُستخرج الإطارات وتُكتشف كل الشخصيات وتُجمَّع.</p>
+        </div>
+        <div class="step">
+          <h3 class="en">Pick the character</h3><h3 class="ar">اختيار الشخصية</h3>
+          <p class="en">Click its card or upload a few reference images, type a trigger word and build.</p>
+          <p class="ar">اضغط على بطاقتها أو ارفع صورًا مرجعية، واكتب كلمة التفعيل، ثم ابنِ الصور.</p>
+        </div>
+        <div class="step">
+          <h3 class="en">Review</h3><h3 class="ar">المراجعة</h3>
+          <p class="en">Go through the images with the keyboard and remove the wrong or bad ones.</p>
+          <p class="ar">تنقّل بين الصور بلوحة المفاتيح، وأزل الخاطئة أو السيئة.</p>
+        </div>
+        <div class="step">
+          <h3 class="en">Tags</h3><h3 class="ar">الوسوم</h3>
+          <p class="en">See every tag and how often it appears; remove, replace or add one in all captions at once.</p>
+          <p class="ar">شاهد كل الوسوم وعدد ظهورها، واحذف أو استبدل أو أضف وسمًا في كل الأوصاف دفعة واحدة.</p>
+        </div>
+        <div class="step">
+          <h3 class="en">Save</h3><h3 class="ar">الحفظ</h3>
+          <p class="en">The images and captions go to a folder of your choice: your training dataset.</p>
+          <p class="ar">تُحفظ الصور وأوصافها في مجلد تختاره: هذا هو ملف التدريب.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <h2 class="en">What it does for you</h2>
+      <h2 class="ar">ما يفعله نيابة عنك</h2>
+      <p class="lead en">The slow parts of making a character dataset by hand, done automatically.</p>
+      <p class="lead ar">الأجزاء المملّة من تجهيز صور شخصية يدويًا، تتم تلقائيًا.</p>
+      <div class="grid">
+        <div class="card">
+          <h3 class="en">Opening and ending skipped</h3><h3 class="ar">تخطي الشارة</h3>
+          <p class="en">The OP/ED and long recaps are found by comparing episodes, and left out.</p>
+          <p class="ar">تُكتشف شارة البداية والنهاية والملخصات الطويلة بمقارنة الحلقات، وتُستبعد.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Characters recognised</h3><h3 class="ar">التعرف على الشخصيات</h3>
+          <p class="en">Every character is grouped by identity, so you pick yours with one click.</p>
+          <p class="ar">تُجمَّع كل شخصية حسب هويتها، فتختار شخصيتك بنقرة واحدة.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Three crops per shot</h3><h3 class="ar">ثلاث قصّات لكل لقطة</h3>
+          <p class="en">Whole body, upper body and head, each checked again to be the right character.</p>
+          <p class="ar">الجسم كاملًا والنصف العلوي والرأس، وكل قصّة يُتحقق من أنها للشخصية الصحيحة.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Bad images filtered</h3><h3 class="ar">تنقية الصور السيئة</h3>
+          <p class="en">On-screen text, dark or faded frames, other characters in the way, chibi and blurry drawings.</p>
+          <p class="ar">النصوص على الشاشة، والإطارات المظلمة أو الباهتة، وتداخل شخصيات أخرى، والرسم المصغّر والضبابي.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">No near-duplicates</h3><h3 class="ar">بلا تكرار</h3>
+          <p class="en">Images that look almost the same are removed and the sharpest one is kept.</p>
+          <p class="ar">تُحذف الصور المتشابهة جدًا ويُبقى الأوضح بينها.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Captions in Anima's style</h3><h3 class="ar">أوصاف بأسلوب Anima</h3>
+          <p class="en">Tags in Anima's order with your trigger word; fixed features like hair and eye colour are left to the trigger.</p>
+          <p class="ar">وسوم بترتيب Anima مع كلمة التفعيل، وتُترك الصفات الثابتة كلون الشعر والعينين لكلمة التفعيل.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Sorted by shot and angle</h3><h3 class="ar">ترتيب حسب اللقطة والزاوية</h3>
+          <p class="en">Close-up to full body; front, three-quarter, side, back, from above and below.</p>
+          <p class="ar">من اللقطة القريبة إلى الجسم الكامل، ومن الأمام وثلاثة أرباع والجانب والخلف والأعلى والأسفل.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Outfits separated</h3><h3 class="ar">فصل الأزياء</h3>
+          <p class="en">When the character wears more than one outfit, each one gets its own tag.</p>
+          <p class="ar">إن ظهرت الشخصية بأكثر من زي، يأخذ كل زي وسمًا خاصًا به.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Learns from your review</h3><h3 class="ar">يتعلم من مراجعتك</h3>
+          <p class="en">Reject an image as another character and every image like it is flagged and left out of later builds.</p>
+          <p class="ar">ارفض صورة كشخصية أخرى، فتُعلَّم كل صورة تشبهها وتُستبعد من كل بناء لاحق.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Anime upscaler</h3><h3 class="ar">تكبير بنموذج للأنمي</h3>
+          <p class="en">Optionally, small crops are enlarged with a model made for anime instead of being thrown away.</p>
+          <p class="ar">اختياريًا، تُكبَّر القصّات الصغيرة بنموذج مخصص للأنمي بدل استبعادها.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Fast rebuilds</h3><h3 class="ar">إعادة بناء سريعة</h3>
+          <p class="en">The analysis is saved, so trying other settings takes seconds instead of minutes.</p>
+          <p class="ar">يُحفظ التحليل، فتجربة إعدادات أخرى تستغرق ثواني بدل دقائق.</p>
+        </div>
+        <div class="card">
+          <h3 class="en">Stop at any time</h3><h3 class="ar">إيقاف في أي لحظة</h3>
+          <p class="en">Every long action can be stopped, and whatever it made is removed.</p>
+          <p class="ar">يمكن إيقاف أي عملية طويلة، ويُحذف كل ما ولّدته.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="output">
+    <div class="wrap split">
+      <div>
+        <h2 class="en">Ready for AI Toolkit</h2>
+        <h2 class="ar">جاهز لـ AI Toolkit</h2>
+        <p class="lead en">Each image comes with a caption file in the order Anima expects. Point AI Toolkit's dataset at the saved folder with caption extension <code>txt</code>.</p>
+        <p class="lead ar">كل صورة معها ملف وصف بالترتيب الذي يتوقعه Anima. وجّه مجموعة البيانات في AI Toolkit إلى المجلد المحفوظ مع امتداد الوصف <code>txt</code>.</p>
+        <p class="dim en">From the command line, export can also balance the angles and write an AI Toolkit job config with the step schedule worked out for your image count.</p>
+        <p class="dim ar">ومن سطر الأوامر يمكن للتصدير أيضًا موازنة الزوايا، وكتابة ملف إعداد لـ AI Toolkit بعدد الخطوات المحسوب حسب عدد صورك.</p>
+      </div>
+      <div>
+<pre><code>my_char/
+  v01_00616.0s_full.png
+  v01_00616.0s_full.txt
+  v01_00616.0s_head.png
+  v01_00616.0s_head.txt
+  ...</code></pre>
+<pre><code>anime screencap, safe, 1girl, my_char, series name,
+smile, looking at viewer, upper body, school uniform</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap split">
+      <div>
+        <h2 class="en">Install</h2>
+        <h2 class="ar">التثبيت</h2>
+        <p class="lead en">Windows with Python 3.12. An NVIDIA graphics card is strongly recommended; on the processor alone it works, but slowly.</p>
+        <p class="lead ar">ويندوز مع Python 3.12. يُنصح بشدة بكرت شاشة NVIDIA، فالبرنامج يعمل على المعالج وحده لكن ببطء.</p>
+        <ol class="install">
+          <li>
+            <span class="en">Download the program and extract it, or clone it:</span>
+            <span class="ar">حمّل البرنامج وفك ضغطه، أو انسخه بـ git:</span>
+<pre><code>git clone https://github.com/DVNM3/animelora.git</code></pre>
+          </li>
+          <li>
+            <span class="en">In its folder, create the environment and install the requirements:</span>
+            <span class="ar">داخل مجلده، أنشئ البيئة وثبّت المتطلبات:</span>
+<pre><code>py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt</code></pre>
+          </li>
+          <li>
+            <span class="en">Double-click <code>animelora-gui.bat</code>. The interface opens in your browser; the models download by themselves on the first run.</span>
+            <span class="ar">افتح <code>animelora-gui.bat</code> بنقرة مزدوجة. تفتح الواجهة في المتصفح، وتُحمَّل النماذج تلقائيًا في أول تشغيل.</span>
+          </li>
+        </ol>
+      </div>
+      <div>
+        <h2 class="en">Command line</h2>
+        <h2 class="ar">سطر الأوامر</h2>
+        <p class="lead en">Everything in the interface is also available as commands.</p>
+        <p class="lead ar">كل ما في الواجهة متاح أيضًا كأوامر.</p>
+<pre><code>animelora.bat scan -p myshow "D:\anime\Season 1"
+animelora.bat build -p myshow -n my_char --cluster 2
+animelora.bat export -p myshow -n my_char --total 100</code></pre>
+        <p class="dim en">All the options are in the <a href="https://github.com/DVNM3/animelora#readme">README</a>.</p>
+        <p class="dim ar">كل الخيارات مشروحة في ملف <a href="https://github.com/DVNM3/animelora#readme">README</a>.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>animelora · <span class="en">MIT License</span><span class="ar">رخصة MIT</span></span>
+    <a href="https://github.com/DVNM3/animelora">github.com/DVNM3/animelora</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  function apply(lang) {
+    root.lang = lang;
+    root.dir = lang === "ar" ? "rtl" : "ltr";
+  }
+  var saved = null;
+  try { saved = localStorage.getItem("lang"); } catch (e) {}
+  apply(saved || ((navigator.language || "").indexOf("ar") === 0 ? "ar" : "en"));
+  document.getElementById("lang").addEventListener("click", function () {
+    var next = root.lang === "ar" ? "en" : "ar";
+    apply(next);
+    try { localStorage.setItem("lang", next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>
