@@ -658,66 +658,120 @@ def rerun_outfits(pname, char, query):
     return (*tag_view(pname, char, query), log)
 
 
-# ---------- tab 5: export ----------
+# ---------- tab 5: save the result ----------
+# Only three things: where the finished images + captions go, a summary of them, and deleting the project
+# from the program folder once it's saved. (The CLI's `export` still has balancing and AI Toolkit configs.)
 
-def schedule_md(n, epochs, res):
-    """The Anima step calculator for n images, as shown under the export settings."""
-    from .aitk import schedule, schedule_notes
-    if not n:
-        return ""
-    s = schedule(n, sorted(int(r) for r in res or [512, 1024]), int(epochs or 40))
-    nums = lambda x: f"⁦{x}⁩"
-    lines = [f"**حاسبة Anima** لـ {nums(n)} صورة × {nums(len(s['resolutions']))} دقة، {nums(s['epochs'])} epoch:",
-             f"- Steps: **{nums(s['steps'])}** — Save Every / Sample Every: **{nums(s['save_every'])}** — "
-             f"Max Saves: **{nums(s['keep'])}**",
-             f"- ثابتة: Batch {nums(1)} × Gradient Accumulation {nums(4)}، Warmup {nums(100)}، LR {nums('0.00002')}"]
-    lines += [f"- {x}" for x in schedule_notes(s)]
-    return "\n".join(lines)
+def save_target(pname, char, parent):
+    """The folder the images go to: <chosen place>/<character>. Refuses places inside the projects folder,
+    which deleting the project would take with it."""
+    parent = (parent or "").strip().strip('"').strip("'")
+    if not parent:
+        raise gr.Error("اكتب أو الصق مسار المكان الذي تريد الحفظ فيه")
+    parent = Path(parent)
+    if not parent.is_absolute():
+        raise gr.Error("اكتب المسار كاملًا، مثل D:\\datasets")
+    out = (parent / char).resolve()
+    if PROJECTS_DIR.resolve() in out.parents or out == PROJECTS_DIR.resolve():
+        raise gr.Error("اختر مكانًا خارج مجلد مشاريع البرنامج، وإلا حُذفت الصور مع المشروع")
+    return out
 
 
-def export_preview(pname, char, total, max_pg, epochs, res):
-    from .export import plan_export
+def save_summary(pname, char, parent):
+    """-> (summary markdown, rows: shot, angle, count) of what saving will write."""
+    from .export import group_of as export_group
     if not pname or not char:
-        return [], ""
+        return "اختر شخصية.", []
+    p = Project(safe_name(pname))
+    root = sorted_root(pname, char)
+    files = sorted(root.rglob("*.png")) if root.exists() else []
+    if not files:
+        return "لا توجد صور لهذه الشخصية. ابنِها أولًا (التبويب ٢).", []
+    build = p.load(f"characters/{char}/build.json", {})
+    n_review = sum(is_review(root, f) for f in files)
+    alike = look_alikes(pname, char)
+    n_alike = sum(f.stem in alike for f in files)
+    n_txt = sum(f.with_suffix(".txt").exists() for f in files)
+    upscaled = {Path(it["file"]).stem for it in build.get("items", []) if it.get("upscaled", 1) > 1}
+    stems = {f.stem for f in files}
+    num = lambda x: f"⁦{x}⁩"
+    lines = [f"**سيُحفظ {num(len(files))} صورة** مع {num(n_txt)} ملف وصف (caption).",
+             f"- كلمة التفعيل: ⁦`{build.get('name', char)}`⁩"
+             + (f" — اسم الأنمي: ⁦`{build['series']}`⁩" if build.get("series") else "")]
+    if upscaled & stems:
+        lines.append(f"- مُكبّرة بنموذج الأنمي: {num(len(upscaled & stems))}")
+    for o in build.get("outfits", []):
+        n = sum(o["token"] in caption_tags(f) for f in files)
+        lines.append(f"- زي {num(o['id'])} ⁦`{o['token']}`⁩: {num(n)} صورة ({', '.join(o['tags'][:3])})")
+    if n_review:
+        lines.append(f"- ⚠ **{num(n_review)} صورة ما زالت معلّمة للمراجعة**، وستُحفظ معها. راجعها أولًا في التبويب ٣.")
+    if n_alike:
+        lines.append(f"- 🚫 **{num(n_alike)} صورة تشبه صورة رفضتها كشخصية أخرى**. راجعها في التبويب ٣.")
+    if n_txt < len(files):
+        lines.append(f"- ⚠ {num(len(files) - n_txt)} صورة بلا ملف وصف.")
     try:
-        groups, picked = plan_export(Project(safe_name(pname)), char, int(total or 0) or None, int(max_pg or 0) or None)
-    except SystemExit:
-        return [], ""
+        lines.append(f"\n**مكان الحفظ:** ⁦`{save_target(pname, char, parent)}`⁩")
+    except gr.Error:
+        pass
+    counts = Counter(export_group(root, f) for f in files)
     rows = []
-    for g in sorted(groups, key=lambda g: -len(groups[g])):
+    for g in sorted(counts, key=lambda g: -counts[g]):
         fr, vw = (g.split("/") + [""])[:2]
-        rows.append([FRAMING_AR.get(fr, fr), VIEW_AR.get(vw, vw), len(groups[g]), len(picked[g])])
-    n = sum(len(v) for v in picked.values())
-    rows.append(["المجموع", "", sum(len(v) for v in groups.values()), n])
-    return rows, schedule_md(n, epochs, res)
+        rows.append([FRAMING_AR.get(fr, fr), VIEW_AR.get(vw, vw), counts[g]])
+    rows.append(["المجموع", "", len(files)])
+    return "\n".join(lines), rows
 
 
-def do_export(pname, char, total, max_per_group, out, aitk_on, aitk_root, ds_name, epochs, res):
-    from .aitk import save_settings
-    from .export import export_target, run_export
+def do_save(pname, char, parent):
+    from .aitk import MARKER, save_settings
+    from .export import run_export
     p = need_project(pname)
     if not char:
         raise gr.Error("اختر الشخصية")
-    aitk = None
-    if aitk_on:
-        root = (aitk_root or "").strip().strip('"')
-        if not root:
-            raise gr.Error("اكتب مسار مجلد AI Toolkit (الذي فيه datasets و output)")
-        save_settings(aitk_root=root)
-        aitk = {"root": root, "dataset_name": (ds_name or "").strip() or None, "epochs": int(epochs),
-                "resolutions": [int(r) for r in res or [512, 1024]], "job_name": None}
-    out = (out or "").strip() or None
+    out = save_target(pname, char, parent)
+    if out.exists() and any(out.iterdir()) and not (out / MARKER).exists():
+        raise gr.Error(f"يوجد مجلد بالاسم {out.name} في هذا المكان ولم يُنشئه البرنامج، فلن يُكتب فوقه. "
+                       "اختر مكانًا آخر.")
+    save_settings(save_dir=str(out.parent))
+    log = captured(run_export, p, char, str(out), txn=txn.export_txn(p, char, out))
+    proj = p.load("project.json", {"videos": []})
+    proj.setdefault("saved", {})[char] = str(out)
+    p.save("project.json", proj)
+    return log
+
+
+def delete_hint(pname):
+    """What deleting the project would remove, and whether anything of it was saved elsewhere first."""
+    from .cleanup import disk_usage, fmt_bytes
+    if not pname or not Project(safe_name(pname)).dir.exists():
+        return ""
+    p = Project(safe_name(pname))
+    size = fmt_bytes(sum(b for _, b in disk_usage(p)))
+    saved = p.load("project.json", {}).get("saved", {})
+    text = (f"يحذف مجلد المشروع **{p.name}** كله من مجلد البرنامج (⁦{size}⁩): الإطارات والشخصيات والتحليل "
+            "المحفوظ. الحلقات الأصلية والصور التي حفظتها في مكان آخر لا تُمس.")
+    if saved:
+        text += "\n\nحُفظ منه: " + "، ".join(f"⁦`{c}`⁩ ← ⁦`{d}`⁩" for c, d in saved.items())
+    else:
+        text += "\n\n⚠ **لم تحفظ أي شخصية من هذا المشروع بعد.**"
+    return text
+
+
+def delete_project(pname, confirm):
+    from .cleanup import disk_usage, fmt_bytes
+    p = need_project(pname)
+    if not p.dir.exists():
+        raise gr.Error("المشروع غير موجود")
+    if not confirm:
+        raise gr.Error("فعّل خانة التأكيد أولًا: حذف المشروع نهائي")
+    size = fmt_bytes(sum(b for _, b in disk_usage(p)))
     try:
-        target = export_target(p, char, out, aitk)
-    except SystemExit as e:
-        raise gui_error(e)
-    result = {}
-
-    def run():
-        result.update(run_export(p, char, out, int(max_per_group or 0) or None, int(total or 0) or None, aitk))
-
-    log = captured(run, txn=txn.export_txn(p, char, target, Path(aitk["root"]) / "config" if aitk else None))
-    return log, result.get("yaml", "")
+        shutil.rmtree(p.dir)
+    except OSError as e:
+        raise gr.Error(f"تعذّر حذف بعض الملفات (ربما مفتوحة في برنامج آخر): {e}")
+    left = projects()
+    gr.Info(f"حُذف المشروع {p.name} وتحرّرت ⁦{size}⁩.")
+    return gr.update(choices=left, value=left[0] if left else None), gr.update(value=False)
 
 
 # ---------- layout ----------
@@ -881,41 +935,26 @@ def build_ui():
                         t_log = gr.Textbox(lines=4, label="السجل", elem_id="log")
 
             # --- 5
-            with gr.Tab("٥. التصدير", id="export"):
-                gr.Markdown("ينسخ الصور بعد المراجعة مع ملفات الوصف إلى مجلد بيانات واحد. **للتوازن:** حدّد عددًا "
-                            "كليًا فيُوزَّع على الزوايا وتُختار صور متنوعة. ومع **AI Toolkit** تُنسخ الصور مباشرة إلى "
-                            "مجلد datasets فيه، ويُولَّد ملف إعدادات Anima بقيم الحاسبة حسب عدد الصور.")
-                saved_root = load_settings().get("aitk_root", "")
+            with gr.Tab("٥. حفظ الناتج", id="export"):
+                gr.Markdown("يحفظ الصور بعد المراجعة مع ملفات الوصف في مجلد باسم الشخصية داخل المكان الذي تختاره. "
+                            "هذا المجلد هو مجموعة البيانات التي تدرّب عليها.")
+                saved_dir = load_settings().get("save_dir", "")
                 with gr.Row():
                     with gr.Column(scale=2):
                         e_char = gr.Dropdown(label="الشخصية", choices=[])
-                        e_total = gr.Number(0, precision=0, minimum=0,
-                                            label="العدد الكلي المطلوب (0 = كل الصور)")
-                        max_pg = gr.Number(0, precision=0, minimum=0,
-                                           label="حد أقصى لكل تصنيف (0 = بلا حد)")
-                        with gr.Group():
-                            aitk_on = gr.Checkbox(bool(saved_root), label="صدّر إلى AI Toolkit وولّد ملف الإعدادات (YAML)")
-                            aitk_root = gr.Textbox(saved_root, label="مجلد AI Toolkit (الذي فيه datasets و output)",
-                                                   elem_classes="ltr",
-                                                   placeholder="E:\\AI-Toolkit-Easy-Install\\AI-Toolkit")
-                            ds_name = gr.Textbox(label="اسم مجلد البيانات في AI Toolkit (فارغ = اسم الشخصية)",
-                                                 elem_classes="ltr", placeholder="natsu_dragneel")
-                            with gr.Row():
-                                epochs = gr.Radio([40, 50, 60], value=40, label="طول التدريب (epoch؛ الوصفة 40)")
-                                res = gr.CheckboxGroup([512, 768, 1024, 1536], value=[512, 1024],
-                                                       label="الدقات (الوصفة 512 و1024)")
-                        e_out = gr.Textbox(label="أو: مجلد إخراج آخر (عند إيقاف AI Toolkit؛ فارغ = مجلد train داخل الشخصية)",
-                                           elem_classes="ltr")
-                        export_btn = gr.Button("📦 صدّر", variant="primary")
+                        e_out = gr.Textbox(saved_dir, label="مكان الحفظ (الصق مسار مجلد؛ يُنشأ فيه مجلد باسم الشخصية)",
+                                           elem_classes="ltr", placeholder="D:\\datasets")
+                        export_btn = gr.Button("💾 احفظ الصور والأوصاف", variant="primary")
                         stop_export = gr.Button(STOP_LABEL, variant="stop", visible=False)
+                        export_log = gr.Textbox(lines=6, label="السجل", elem_id="log")
                     with gr.Column(scale=2):
-                        groups_df = gr.Dataframe(headers=["اللقطة", "الزاوية", "المتوفر", "سيُصدَّر"],
-                                                 interactive=False, label="معاينة التوزيع")
-                        calc_md = gr.Markdown()
-                export_log = gr.Textbox(lines=8, label="السجل", elem_id="log")
-                yaml_code = gr.Code(language="yaml", label="ملف إعدادات AI Toolkit: انسخه والصقه في وضع "
-                                                          "Advanced عند إنشاء Job جديد", lines=12,
-                                    interactive=False, buttons=["copy", "download"])
+                        e_summary = gr.Markdown()
+                        groups_df = gr.Dataframe(headers=["اللقطة", "الزاوية", "العدد"], interactive=False,
+                                                 label="التوزيع")
+                with gr.Accordion("🗑 حذف المشروع من مجلد البرنامج (بعد الحفظ)", open=False):
+                    del_hint = gr.Markdown()
+                    del_confirm = gr.Checkbox(label="أفهم أن حذف المشروع نهائي ولا يمكن التراجع عنه")
+                    del_project_btn = gr.Button("🗑 احذف المشروع", variant="stop")
 
         # ---- events ----
         proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
@@ -984,14 +1023,16 @@ def build_ui():
         t_undo_btn.click(tag_undo, [project, t_char, t_search], t_out)
         t_outfits_btn.click(rerun_outfits, [project, t_char, t_search], [*t_out, t_log])
 
-        plan_in = [project, e_char, e_total, max_pg, epochs, res]
-        for comp in (e_char, e_total, max_pg, epochs, res):
-            comp.change(export_preview, plan_in, [groups_df, calc_md])
-        tabs.select(export_preview, plan_in, [groups_df, calc_md])
+        sum_in, sum_out = [project, e_char, e_out], [e_summary, groups_df]
+        e_char.change(save_summary, sum_in, sum_out)
+        e_out.change(save_summary, sum_in, sum_out)
+        tabs.select(save_summary, sum_in, sum_out)
+        tabs.select(delete_hint, project, del_hint)
+        project.change(delete_hint, project, del_hint)
         tabs.select(tag_view, [project, t_char, t_search], t_out)
-        long_action(export_btn, stop_export, do_export,
-                    [project, e_char, e_total, max_pg, e_out, aitk_on, aitk_root, ds_name, epochs, res],
-                    [export_log, yaml_code])
+        long_action(export_btn, stop_export, do_save, [project, e_char, e_out], [export_log]) \
+            .success(delete_hint, project, del_hint)
+        del_project_btn.click(delete_project, [project, del_confirm], [project, del_confirm])
     return demo
 
 
