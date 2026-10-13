@@ -15,6 +15,12 @@ from . import cancel, txn
 from .cancel import Cancelled
 from .common import PROJECTS_DIR, Project, parse_ranges, safe_name
 
+def ltr(text) -> str:
+    """Keep an English word, name, path or number as one left-to-right piece inside Arabic text: without the
+    isolate, neutral characters at its edges (e.g. the _ of _dropped, a final period) jump to the other side."""
+    return f"\u2066{text}\u2069"
+
+
 FRAMING_AR = {"close_up": "لقطة قريبة", "upper_body": "نصف علوي", "cowboy_shot": "حتى الفخذ", "full_body": "جسم كامل"}
 VIEW_AR = {"front": "أمام", "three_quarter": "ثلاثة أرباع", "side": "جانب", "back": "خلف", "above": "من الأعلى",
            "below": "من الأسفل"}
@@ -25,11 +31,19 @@ BUILD_OPTIONS = [("فصل الأزياء تلقائيًا (وسم لكل زي ب
                  ("إبقاء الصور التي فيها نصوص", "keep_text"),
                  ("إبقاء الصور المزدحمة بشخصيات أخرى", "keep_crowded"),
                  ("إبقاء الرسم المصغّر (chibi) والضبابي", "keep_offmodel"),
-                 ("حفظ الصور المستبعدة في مجلد _dropped", "save_dropped"),
+                 (f"حفظ الصور المستبعدة في مجلد {ltr('_dropped')}", "save_dropped"),
                  ("إعادة التحليل من الصفر وتجاهل المحفوظ (أبطأ بكثير، نادرًا ما تحتاجه)", "fresh")]
 
 CSS = """
 .gradio-container { direction: rtl; }
+/* Gradio marks every component dir="ltr" unless it gets rtl=True, which put Arabic text with English words or
+   parentheses in a left-to-right order (the title read backwards). The whole interface is Arabic. */
+.gradio-container [dir="ltr"] { direction: rtl; }
+/* table cells (Gradio draws them as div.body-cell, aligned left) and image captions hold English tags and names
+   as often as Arabic: right-aligned like the headers, each one in the direction of its own first letter */
+.gradio-container .body-cell, .gradio-container .body-cell .text { text-align: right; }
+.gradio-container .body-cell .text, .gradio-container .caption-label { unicode-bidi: plaintext; }
+input[type=range] { direction: ltr; }
 .ltr textarea, .ltr input { direction: ltr !important; text-align: left !important; }
 #log textarea { direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 12px; }
 #preview img { object-fit: contain; }
@@ -91,7 +105,7 @@ ERRORS_AR = [("not found:", "الملف أو المجلد غير موجود"),
 def gui_error(e: SystemExit):
     msg = str(e) or "failed"
     hint = next((ar for key, ar in ERRORS_AR if key in msg), None)
-    return gr.Error(f"{hint}\n\n{msg}" if hint else msg)
+    return gr.Error(f"{hint}\n\n{ltr(msg)}" if hint else ltr(msg))  # the pipeline's own messages are English
 
 
 def captured(fn, *args, txn=None):
