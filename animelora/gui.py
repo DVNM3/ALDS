@@ -41,6 +41,7 @@ document.addEventListener('keydown', (e) => {
   if (tag === 'textarea' || tag === 'input') return;
   const click = (id) => { const b = document.getElementById(id); if (b && b.offsetParent !== null) { b.click(); e.preventDefault(); } };
   if (e.key === 'Delete') click('btn-del');
+  else if (e.code === 'KeyN' && !e.ctrlKey && !e.metaKey && !e.altKey) click('btn-reject');
   else if (e.key === 'ArrowLeft') click('btn-next');
   else if (e.key === 'ArrowRight') click('btn-prev');
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { click('btn-undo'); click('btn-tag-undo'); }
@@ -321,6 +322,21 @@ def is_review(root, f):
     return f.relative_to(root).parts[0] == "_review"
 
 
+_alike_cache = {}
+
+
+def look_alikes(pname, char):
+    """{image name: margin} of images that look like one rejected as another character (negatives.py),
+    recomputed only when the rejections or the build change."""
+    from . import negatives
+    char_dir = sorted_root(pname, char).parent
+    key = tuple((char_dir / f).stat().st_mtime_ns if (char_dir / f).exists() else 0
+                for f in (negatives.FILE, negatives.FEATS))
+    if _alike_cache.get(char_dir, (None,))[0] != key:
+        _alike_cache[char_dir] = (key, negatives.look_alikes(char_dir) if key[0] else {})
+    return _alike_cache[char_dir][1]
+
+
 def list_files(pname, char, flt):
     if not pname or not char:
         return []
@@ -329,6 +345,9 @@ def list_files(pname, char, flt):
     files.sort(key=lambda f: (not is_review(root, f), group_of(root, f), f.name))
     if flt == "_review":
         files = [f for f in files if is_review(root, f)]
+    elif flt == "_alike":  # most alike first
+        alike = look_alikes(pname, char)
+        files = sorted((f for f in files if f.stem in alike), key=lambda f: -alike[f.stem])
     elif flt and flt.startswith("outfit:"):
         files = [f for f in files if flt[7:] in caption_tags(f)]
     elif flt and flt != "all":
@@ -355,6 +374,10 @@ def filter_choices(pname, char):
     n_review = sum(is_review(root, f) for f in files)
     if n_review:
         choices.append((f"⚠ للمراجعة ({n_review})", "_review"))
+    alike = look_alikes(pname, char)
+    n_alike = sum(f.stem in alike for f in files)
+    if n_alike:
+        choices.append((f"🚫 تشبه ما رفضته ({n_alike})", "_alike"))
     for o in outfits_of(pname, char):
         n = sum(o["token"] in caption_tags(f) for f in files)
         choices.append((f"🧥 زي {o['id']}: {', '.join(o['tags'][:2])} ({n})", f"outfit:{o['token']}"))
@@ -379,8 +402,10 @@ def gallery_items(pname, char, files):
     if not files:
         return []
     root = sorted_root(pname, char)
+    alike = look_alikes(pname, char)
     # full labels don't fit on thumbnails; the side panel shows them, the grid only flags images to check
-    return [(str(thumb(root.parent, f)), "⚠" if is_review(root, f) else None) for f in map(Path, files)]
+    return [(str(thumb(root.parent, f)), "🚫" if f.stem in alike else "⚠" if is_review(root, f) else None)
+            for f in map(Path, files)]
 
 
 def panel(pname, char, files, idx):
@@ -397,6 +422,8 @@ def panel(pname, char, files, idx):
     info = f"**{idx + 1} / {len(files)}** — {FRAMING_AR.get(fr, fr)} · {VIEW_AR.get(vw, vw)}"
     if is_review(root, f):
         info += " — ⚠ تحتاج تأكيدًا"
+    if f.stem in look_alikes(pname, char):
+        info += " — 🚫 تشبه صورة رفضتها كشخصية أخرى"
     if meta:
         m, s = divmod(int(meta["t"]), 60)
         # ⁦..⁩ isolate Latin text/numbers so they don't scramble the right-to-left line
@@ -415,9 +442,12 @@ def stats_text(pname, char):
         return "اختر شخصية."
     root = sorted_root(pname, char)
     n_review = sum(is_review(root, Path(f)) for f in files)
+    from . import negatives
     trash = root.parent / "_deleted"
     n_del = len(list(trash.rglob("*.png"))) if trash.exists() else 0
-    return f"**{len(files)}** صورة — منها **{n_review}** للمراجعة — المحذوفة: {n_del}"
+    n_rej = len(negatives.load(root.parent)[0])
+    return (f"**{len(files)}** صورة — منها **{n_review}** للمراجعة — المحذوفة: {n_del}"
+            + (f" — رُفضت كشخصية أخرى: {n_rej}" if n_rej else ""))
 
 
 def review_outputs(pname, char, files, idx, regallery=True):
@@ -461,25 +491,70 @@ def _move_pair(src: Path, dst_dir: Path):
     return dst
 
 
-def delete_image(pname, char, flt, files, idx, undo):
-    if not files:
-        raise gr.Error("لا توجد صورة محددة")
+def _trash(pname, char, files, idx, undo, kind):
     root = sorted_root(pname, char)
     src = Path(files[idx])
     dst = _move_pair(src, root.parent / "_deleted" / src.parent.relative_to(root))
-    undo = (undo or []) + [(str(src), str(dst))]
-    return (*review_outputs(pname, char, list_files(pname, char, flt), idx), undo)
+    return (undo or []) + [(str(src), str(dst), kind)]
+
+
+def filter_update(pname, char, flt):
+    choices = filter_choices(pname, char)
+    return gr.update(choices=choices, value=flt if flt in [v for _, v in choices] else "all")
+
+
+def delete_image(pname, char, flt, files, idx, undo):
+    """A bad image of the right character: removed, nothing is learned."""
+    if not files:
+        raise gr.Error("لا توجد صورة محددة")
+    undo = _trash(pname, char, files, idx, undo, "delete")
+    files = list_files(pname, char, flt)
+    return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
+
+
+def reject_image(pname, char, flt, files, idx, undo):
+    """Another character: removed, and learned as a negative (negatives.py) - review points at the images that
+    look like it, and every later build leaves such crops out."""
+    from . import negatives
+    if not files:
+        raise gr.Error("لا توجد صورة محددة")
+    if not negatives.reject(sorted_root(pname, char).parent, Path(files[idx]).stem):
+        raise gr.Error("هذه الشخصية بُنيت بإصدار أقدم من البرنامج: أعد بناءها مرة واحدة ليتعلّم من الرفض. "
+                       "أو احذف الصورة بزر «صورة سيئة».")
+    undo = _trash(pname, char, files, idx, undo, "reject")
+    alike = look_alikes(pname, char)
+    n = sum(Path(f).stem in alike for f in list_files(pname, char, "all"))
+    gr.Info(f"رُفضت كشخصية أخرى. {n} صورة باقية تشبه ما رفضته: اخترها من «🚫 تشبه ما رفضته» في قائمة العرض."
+            if n else "رُفضت كشخصية أخرى، وسيستبعد البرنامج ما يشبهها في كل بناء قادم.")
+    files = list_files(pname, char, flt)
+    return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
 
 
 def undo_delete(pname, char, flt, files, idx, undo):
+    from . import negatives
     if not undo:
         raise gr.Error("لا يوجد حذف للتراجع عنه")
     undo = list(undo)
-    orig, moved = map(Path, undo.pop())
+    orig, moved, *kind = undo.pop()
+    orig, moved = Path(orig), Path(moved)
     _move_pair(moved, orig.parent)
+    if kind == ["reject"]:
+        negatives.remove(sorted_root(pname, char).parent, orig.stem)
     files = list_files(pname, char, flt)
     idx = files.index(str(orig)) if str(orig) in files else idx
-    return (*review_outputs(pname, char, files, idx), undo)
+    return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
+
+
+def forget_rejected(pname, char, flt, files, idx):
+    from . import negatives
+    if not char:
+        raise gr.Error("اختر شخصية")
+    char_dir = sorted_root(pname, char).parent
+    n = len(negatives.load(char_dir)[0])
+    negatives.clear(char_dir)
+    gr.Info(f"نسي البرنامج {n} صورة مرفوضة. الصور نفسها تبقى في المحذوفات.")
+    files = list_files(pname, char, flt)
+    return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
 
 
 def move_image(pname, char, flt, files, idx, target):
@@ -746,8 +821,10 @@ def build_ui():
 
             # --- 3
             with gr.Tab("٣. المراجعة", id="review"):
-                gr.Markdown("احذف كل صورة ليست للشخصية، وابدأ بالصور المعلّمة ⚠. "
-                            "اختصارات لوحة المفاتيح: **Delete** للحذف، **← →** للتنقل، **Ctrl+Z** للتراجع.")
+                gr.Markdown("أزل كل صورة ليست للشخصية، وابدأ بالصور المعلّمة ⚠. "
+                            "**N** (ليست الشخصية): لصورة شخصية أخرى، فيتعلّم منها البرنامج: يعلّم ما يشبهها بـ🚫 "
+                            "ويستبعده في كل بناء قادم. **Delete**: لصورة سيئة للشخصية نفسها، ولا يتعلّم منها شيئًا. "
+                            "**← →** للتنقل، و**Ctrl+Z** للتراجع.")
                 with gr.Row():
                     r_char = gr.Dropdown(label="الشخصية", choices=[], scale=2)
                     r_filter = gr.Dropdown(label="عرض", choices=[("الكل", "all")], value="all", scale=2)
@@ -764,13 +841,15 @@ def build_ui():
                             prev_btn = gr.Button("→ السابق", elem_id="btn-prev")
                             next_btn = gr.Button("التالي ←", elem_id="btn-next")
                         with gr.Row():
-                            del_btn = gr.Button("🗑 حذف (Delete)", variant="stop", elem_id="btn-del")
+                            reject_btn = gr.Button("🚫 ليست الشخصية (N)", variant="stop", elem_id="btn-reject")
+                            del_btn = gr.Button("🗑 صورة سيئة (Delete)", elem_id="btn-del")
                             undo_btn = gr.Button("↶ تراجع", elem_id="btn-undo")
                         r_caption = gr.Textbox(lines=4, label="الوصف (caption)", elem_classes="ltr")
                         save_btn = gr.Button("💾 حفظ الوصف")
                         with gr.Row():
                             move_to = gr.Dropdown(label="تصنيف خاطئ؟ انقلها إلى", choices=[], scale=3)
                             move_btn = gr.Button("↪ نقل", scale=1)
+                        forget_btn = gr.Button("نسيان كل الصور المرفوضة كشخصية أخرى", size="sm")
                 files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
 
             # --- 4
@@ -887,8 +966,11 @@ def build_ui():
         r_gal.select(select_image, [project, r_char, files_st], rv_out)
         prev_btn.click(step(-1), [project, r_char, files_st, idx_st], rv_out)
         next_btn.click(step(+1), [project, r_char, files_st, idx_st], rv_out)
-        del_btn.click(delete_image, [project, r_char, r_filter, files_st, idx_st, undo_st], [*rv_out, undo_st])
-        undo_btn.click(undo_delete, [project, r_char, r_filter, files_st, idx_st, undo_st], [*rv_out, undo_st])
+        trash_in = [project, r_char, r_filter, files_st, idx_st, undo_st]
+        del_btn.click(delete_image, trash_in, [*rv_out, undo_st, r_filter])
+        reject_btn.click(reject_image, trash_in, [*rv_out, undo_st, r_filter])
+        undo_btn.click(undo_delete, trash_in, [*rv_out, undo_st, r_filter])
+        forget_btn.click(forget_rejected, [project, r_char, r_filter, files_st, idx_st], [*rv_out, r_filter])
         move_btn.click(move_image, [project, r_char, r_filter, files_st, idx_st, move_to], rv_out)
         save_btn.click(save_caption, [files_st, idx_st, r_caption], None)
 

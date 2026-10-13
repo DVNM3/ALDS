@@ -17,6 +17,7 @@ from .cancel import check as check_cancel
 from .captions import FRAMING_TAGS, classify, find_core_tags, make_caption
 from .common import box_area, box_iou, expand_box, frame_in_use
 from .identity import ccip_cross, ccip_features
+from . import negatives
 from .scan import load_state
 
 # Calibrated on a test episode with cluster references: true matches scored < 0.10, other characters
@@ -75,22 +76,32 @@ def match_score(feats, refs):
     return np.sort(ccip_cross(feats, refs), axis=1)[:, :k].mean(1)
 
 
-def select(frames, dets, F, refs, threshold, relax, cache):
-    """One detection per frame: the best CCIP match under `threshold`. With relax > 1, extend along each
-    shot to neighbouring frames where an overlapping box scores under threshold*relax."""
+def select(frames, dets, F, refs, threshold, relax, cache, negs=None):
+    """One detection per frame: the best CCIP match under `threshold`, skipping detections closer to an image
+    rejected in review than to the references (negatives.py). With relax > 1, extend along each shot to
+    neighbouring frames where an overlapping box scores under threshold*relax.
+    -> (chosen, best score per frame, frames left out only because of a rejected image)"""
     elig = [d for d in dets if d["feat"] >= 0 and frame_in_use(frames[d["frame"]])]
-    scores = cache.scores(digest(refs, F), [d["id"] for d in elig],
-                          lambda ids: match_score(F[[dets[i]["feat"] for i in ids]], refs))
+    feats_of = lambda ids: F[[dets[i]["feat"] for i in ids]]
+    ids = [d["id"] for d in elig]
+    scores = cache.scores(digest(refs, F), ids, lambda ids: match_score(feats_of(ids), refs))
+    rejected = set()
+    if negs is not None:
+        near = cache.scores("neg:" + digest(negs, F), ids, lambda ids: negatives.nearest(feats_of(ids), negs))
+        rejected = {i for i, s, n in zip(ids, scores, near) if n < s}
     by_frame = defaultdict(list)
     for d, s in zip(elig, scores):
         by_frame[d["frame"]].append((d, float(s)))
 
-    chosen, best_scores = {}, []
+    chosen, best_scores, n_rejected = {}, [], 0
     for fi, ds in by_frame.items():
-        d, s = min(ds, key=lambda x: x[1])
-        best_scores.append(s)
+        best_scores.append(min(s for _, s in ds))
+        ok = [x for x in ds if x[0]["id"] not in rejected]
+        d, s = min(ok, key=lambda x: x[1]) if ok else (None, float("inf"))
         if s <= threshold:
             chosen[fi] = (d, s, "match")
+        elif best_scores[-1] <= threshold:
+            n_rejected += 1
 
     frontier = list(chosen) if relax > 1 else []
     while frontier:
@@ -102,14 +113,15 @@ def select(frames, dets, F, refs, threshold, relax, cache):
                     continue
                 if (frames[nf]["vid"], frames[nf]["shot"]) != (frames[fi]["vid"], frames[fi]["shot"]):
                     continue
-                cands = [(box_iou(d["box"], base["box"]), d, s) for d, s in by_frame[nf] if s <= threshold * relax]
+                cands = [(box_iou(d["box"], base["box"]), d, s) for d, s in by_frame[nf]
+                         if s <= threshold * relax and d["id"] not in rejected]
                 cands = [c for c in cands if c[0] >= 0.4]
                 if cands:
                     _, d, s = max(cands, key=lambda c: c[0])
                     chosen[nf] = (d, s, "track")
                     nxt.append(nf)
         frontier = nxt
-    return chosen, best_scores
+    return chosen, best_scores, n_rejected
 
 
 def crop_boxes(img, det, detect_halfbody):
@@ -233,9 +245,13 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
     try:
         threshold = threshold or DEFAULT_THRESHOLD
         refs = reference_features(project, cluster_ids, ref_dir, dets, F, cache)
-        chosen, best_scores = select(frames, dets, F, refs, threshold, relax, cache)
+        neg_names, negs = negatives.load(out_dir)
+        chosen, best_scores, n_rejected = select(frames, dets, F, refs, threshold, relax, cache, negs)
         n_track = sum(1 for v in chosen.values() if v[2] == "track")
         print(f"[build] matched {len(chosen)} frames ({n_track} via shot tracking), threshold {threshold}")
+        if neg_names:
+            print(f"        {len(neg_names)} images rejected in review as another character: "
+                  f"{n_rejected} frames left out because they look like one of them")
         print("        best score per frame: " + score_histogram(best_scores))
         if not chosen:
             raise SystemExit("no matches - try a higher --threshold or other clusters/refs")
@@ -283,9 +299,14 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
                     recs[t]["ccip"] = f
                 cache.computed += 1
             if sub:
-                for t, s in zip(sub, match_score(np.stack([recs[t]["ccip"] for t in sub]), refs)):
+                sub_feats = np.stack([recs[t]["ccip"] for t in sub])
+                near = negatives.nearest(sub_feats, negs) if negs is not None else [float("inf")] * len(sub)
+                for t, s, n in zip(sub, match_score(sub_feats, refs), near):
                     if s > threshold:
                         drop("another character in crop", crop, fr, t)
+                        del boxes[t]
+                    elif n < s:
+                        drop("like a rejected character", crop, fr, t)
                         del boxes[t]
             for ctype, box in boxes.items():
                 rec = recs[ctype]
@@ -322,7 +343,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
         from imgutils.detect import detect_eyes, detect_faces
         core = set() if keep_core else find_core_tags([it["general"] for it in keep])
         review_cut = threshold * 0.85
-        meta, dist, n_review, n_up, stems, embs = [], Counter(), 0, 0, [], []
+        meta, dist, n_review, n_up, stems, embs, ccips = [], Counter(), 0, 0, [], [], []
         open_key = open_img = None
 
         def frame_img(fr):  # items are sorted by frame, so neighbours often share one
@@ -346,6 +367,8 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
             stem = f"v{fr['vid']:02d}_{fr['t']:07.1f}s_{it['type']}"
             stems.append(stem)
             embs.append(it["emb"])
+            ccips.append(F[dets[it["det"]]["feat"]] if it["type"] == "full"
+                         else cache.entries[it["det"]]["crops"][it["type"]]["ccip"])
             factor = upscale_factor(it["box"], upscale_to) if upscale_to else 1.0
             n_up += factor > 1
             cut = lambda: frame_img(fr).crop(it["box"])
@@ -355,7 +378,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
             caption = make_caption(name, it["rating"], it["general"], core, series, screencap)
             (folder / f"{stem}.txt").write_text(caption, encoding="utf-8")
             dist[(framing, view)] += 1
-            meta.append({"file": str((folder / f"{stem}.png").relative_to(out_dir)), "vid": fr["vid"],
+            meta.append({"file": str((folder / f"{stem}.png").relative_to(out_dir)), "det": it["det"], "vid": fr["vid"],
                          "t": fr["t"], "type": it["type"], "ccip": it["score"], "how": it["how"],
                          "sharp": round(it["sharp"], 1), "framing": framing, "view": view, "caption": caption,
                          "upscaled": round(factor, 2), "pose": pose})
@@ -364,6 +387,8 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
 
     # WD14 embeddings of the kept images: used by export to pick a varied subset
     np.savez_compressed(out_dir / "emb.npz", stems=np.array(stems), emb=np.stack(embs).astype(np.float16))
+    # CCIP of the kept images and the references: review uses them to find images like a rejected one
+    np.savez_compressed(out_dir / negatives.FEATS, stems=np.array(stems), feats=np.stack(ccips), refs=refs)
     project.save(f"characters/{out_dir.name}/build.json",
                  {"name": name, "series": series, "clusters": cluster_ids,
                   "ref_dir": str(ref_dir) if ref_dir else None,

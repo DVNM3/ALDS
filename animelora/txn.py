@@ -97,7 +97,7 @@ def build_txn(project: Project, name: str, ref_dir=None):
     c = project.char_dir(name)
     return Transaction(project.dir,
                        replace=[c / "sorted", c / "_deleted", c / "_dropped", c / "_caption_history",
-                                c / "build.json", c / "emb.npz", c / "report.txt"]
+                                c / "build.json", c / "emb.npz", c / "ccip.npz", c / "report.txt"]
                        + ([Path(ref_dir)] if ref_dir else []),
                        remove_if_new=[c])
 

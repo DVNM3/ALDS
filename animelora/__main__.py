@@ -7,6 +7,7 @@
   split    split one mixed cluster into smaller ones
   build    chosen cluster(s)/reference images -> crops -> dedup -> tags -> sorted folders (+ outfit tokens)
   outfits  re-run outfit separation on a built character
+  reject   mark built images as another character: removed, and later builds leave out what looks like them
   tags     bulk edit captions: list / remove / replace / add tags, undo
   export   reviewed sorted folders -> flat AI Toolkit dataset (image + .txt), optionally balanced
   clean    free disk space (extracted frames, thumbnails)
@@ -78,6 +79,13 @@ def main(argv=None):
     p.add_argument("--overwrite", action="store_true", help="replace an existing sorted/ folder")
     p.add_argument("--fresh", action="store_true",
                    help="ignore the saved crop analysis (tags, OCR, faces, upscales) and redo it all")
+
+    p = sub.add_parser("reject", help="mark built images as another character (removed and learned); "
+                                      "without images it lists the remaining ones that look like them")
+    p.add_argument("-p", "--project", required=True)
+    p.add_argument("-n", "--name", required=True)
+    p.add_argument("images", nargs="*", help="image names in sorted/, e.g. v01_00616.0s_full.png")
+    p.add_argument("--clear", action="store_true", help="forget all rejected images (the files stay deleted)")
 
     p = sub.add_parser("outfits", help="re-run outfit separation (e.g. after deleting images in review)")
     p.add_argument("-p", "--project", required=True)
@@ -162,6 +170,8 @@ def run_command(project, a):
             run_build(project, a.name, a.cluster, a.ref, a.threshold, a.relax, min_size, a.sim, a.series,
                       a.keep_core, not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_crowded, a.keep_offmodel,
                       a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh)
+    elif a.cmd == "reject":
+        run_reject(project, a)
     elif a.cmd == "outfits":
         from .outfits import run_outfits
         run_outfits(project, a.name)
@@ -185,6 +195,33 @@ def run_command(project, a):
     elif a.cmd == "clean":
         from .cleanup import clean
         clean(project, "all" if a.all else "safe")
+
+
+def run_reject(project, a):
+    from . import negatives
+    char_dir = project.char_dir(a.name)
+    sorted_dir = char_dir / "sorted"
+    if not sorted_dir.exists():
+        raise SystemExit(f"no built images for '{a.name}'")
+    if a.clear:
+        print(f"[reject] forgot {len(negatives.load(char_dir)[0])} rejected images")
+        negatives.clear(char_dir)
+        return
+    for name in a.images:
+        hits = list(sorted_dir.rglob(Path(name).stem + ".png"))
+        if not hits:
+            raise SystemExit(f"not found in {sorted_dir}: {name}")
+        if not negatives.reject(char_dir, hits[0].stem):
+            raise SystemExit("this character was built by an older version - build it again once (--overwrite)")
+        negatives.trash(char_dir, hits[0])
+        print(f"[reject] {hits[0].name}: removed and learned as another character")
+    names, _ = negatives.load(char_dir)
+    alike = negatives.look_alikes(char_dir, [f.stem for f in sorted_dir.rglob("*.png")])
+    print(f"[reject] {len(names)} rejected images; {len(alike)} remaining images look like them"
+          + (" (most alike first):" if alike else ""))
+    paths = {f.stem: f for f in sorted_dir.rglob("*.png")}
+    for n in sorted(alike, key=alike.get, reverse=True):
+        print(f"  {paths[n].relative_to(sorted_dir)}")
 
 
 def run_tags(project, a):
