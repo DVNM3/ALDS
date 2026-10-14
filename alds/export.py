@@ -102,7 +102,7 @@ def run_export(project, name, out, max_per_group=None, total=None, aitk=None):
     if out != char_dir / "train":
         check_dataset_dir(out)
     out.mkdir(parents=True, exist_ok=True)
-    (out / MARKER).write_text("exported by animelora\n", encoding="utf-8")
+    (out / MARKER).write_text("exported by ALDS\n", encoding="utf-8")
     for old in list(out.glob("*.png")) + list(out.glob("*.txt")):
         old.unlink()
     missing = n = 0

@@ -375,7 +375,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
     (out_dir / "report.txt").write_text(report, encoding="utf-8")
     print(report)
     print(f"Review:  {sorted_dir}\n  - check the _review folder first, delete anything that is not {name}\n"
-          f"  - then run:  animelora export -p {project.name} -n {name}")
+          f"  - then run:  alds.bat export -p {project.name} -n {name}")
 
 
 def score_histogram(scores):

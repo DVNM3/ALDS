@@ -63,17 +63,17 @@ html[lang="ar"] .wrap.default > span.error::before { content: "%s"; }
                             for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info")))
 
 HEAD = """<script>
-window.animeloraLang = (l) => {
+window.aldsLang = (l) => {
   document.documentElement.lang = l;
   document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
-  try { localStorage.setItem('animelora-lang', l); } catch (e) {}
+  try { localStorage.setItem('alds-lang', l); } catch (e) {}
 };
 let storedLang = null;
-try { storedLang = localStorage.getItem('animelora-lang'); } catch (e) {}
-window.animeloraLang(storedLang || '__LANG__');
-window.animeloraSwitch = (v) => {
+try { storedLang = localStorage.getItem('alds-lang'); } catch (e) {}
+window.aldsLang(storedLang || '__LANG__');
+window.aldsSwitch = (v) => {
   const d = JSON.parse(v);
-  window.animeloraLang(d.lang);
+  window.aldsLang(d.lang);
   const names = new Map();
   for (const [en, ar] of d.tabs) {
     const name = d.lang === 'ar' ? ar : en;
@@ -775,13 +775,13 @@ def save_summary(pname, char, parent):
 
 
 def do_save(pname, char, parent):
-    from .aitk import MARKER, save_settings
+    from .aitk import made_here, save_settings
     from .export import run_export
     p = need_project(pname)
     if not char:
         raise gr.Error(t("Pick the character"))
     out = save_target(char, parent)
-    if out.exists() and any(out.iterdir()) and not (out / MARKER).exists():
+    if out.exists() and any(out.iterdir()) and not made_here(out):
         raise gr.Error(t("There is a folder named {name} in that place that the program didn't make, so it won't "
                          "be overwritten. Pick another place.", name=out.name))
     save_settings(save_dir=str(out.parent))
@@ -828,7 +828,7 @@ def delete_project(pname, confirm):
 
 
 def title_md(gpu):
-    return ("## " + t("animelora — LoRA datasets of a character from anime episodes") + "\n"
+    return ("## " + t("ALDS — LoRA datasets of a character from anime episodes") + "\n"
             + (t("🟢 The graphics card is used (CUDA)") if gpu else t("🔴 Running on the CPU only (slow)")))
 
 
@@ -863,7 +863,7 @@ def apply_texts(texts, language):
 def build_ui(language):
     import onnxruntime as ort
     gpu = "CUDAExecutionProvider" in ort.get_available_providers()
-    with gr.Blocks(title="animelora", analytics_enabled=False) as demo, use("en"):
+    with gr.Blocks(title="ALDS", analytics_enabled=False) as demo, use("en"):
         texts = build_page(demo, gpu)
     apply_texts(texts, language)
     return demo
@@ -1131,7 +1131,7 @@ def build_page(demo, gpu):
     switch_outputs = [block for block, _ in texts.values()] + [b for b in refreshed if b._id not in texts]
     tab_names = [(props["label"], AR[props["label"]]) for block, props in texts.values()
                  if isinstance(block, gr.Tab)]
-    set_direction = "(v) => window.animeloraSwitch(v)"
+    set_direction = "(v) => window.aldsSwitch(v)"
 
     def page_language(language):
         return json.dumps({"lang": language, "tabs": tab_names}, ensure_ascii=False)

@@ -6,7 +6,7 @@ from .common import Project, parse_ranges, setup_runtime
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="animelora",
+    ap = argparse.ArgumentParser(prog="alds",
                                  description="Turn anime episodes into a LoRA training dataset for one character.")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

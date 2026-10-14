@@ -26,7 +26,7 @@ def t(text: str, **values) -> str:
 
 
 AR = {
-    "animelora — LoRA datasets of a character from anime episodes": "animelora — تجهيز صور LoRA لشخصية من حلقات الأنمي",
+    "ALDS — LoRA datasets of a character from anime episodes": "ALDS — تجهيز صور LoRA لشخصية من حلقات الأنمي",
     "🟢 The graphics card is used (CUDA)": "🟢 كرت الشاشة يعمل (CUDA)",
     "🔴 Running on the CPU only (slow)": "🔴 يعمل على المعالج فقط (بطيء)",
     "Project (pick one or type a new name)": "المشروع (اختر مشروعًا أو اكتب اسمًا جديدًا)",

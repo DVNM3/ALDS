@@ -12,7 +12,8 @@ GA = 4
 WARMUP = 100
 TEMPLATE = Path(__file__).with_name("aitk_template.yaml")
 DEFAULT_RES = (512, 1024)
-MARKER = ".animelora"
+MARKERS = (".alds", ".animelora")
+MARKER = MARKERS[0]
 SETTINGS = ROOT / "settings.json"
 QUALITY = "masterpiece, best quality, score_7"
 
@@ -102,9 +103,13 @@ def next_job_name(base: str, aitk_root: Path) -> str:
     return f"{base}_v{n}"
 
 
+def made_here(path: Path) -> bool:
+    return any((path / m).exists() for m in MARKERS)
+
+
 def check_dataset_dir(path: Path):
-    if path.exists() and any(path.iterdir()) and not (path / MARKER).exists():
-        raise SystemExit(f"dataset folder {path} already exists and was not made by animelora - "
+    if path.exists() and any(path.iterdir()) and not made_here(path):
+        raise SystemExit(f"dataset folder {path} already exists and was not made by ALDS - "
                          "pick another dataset name so it isn't overwritten")
 
 
