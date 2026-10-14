@@ -22,6 +22,8 @@ DEFAULT_THRESHOLD = 0.13
 MIN_CONTRAST = 18.0
 TEXT_MIN_CONF = 0.75
 OFFMODEL_TAGS = ("chibi", "super deformed", "blurry")
+MONOCHROME_TAGS = ("monochrome", "greyscale", "sepia")
+OTHER_PER_CLUSTER = 16
 UPSCALE_MIN_FACTOR = 1.15
 MAX_ASPECT = 3.0
 CROP_TYPES = ("full", "half", "head")
@@ -41,11 +43,7 @@ def reference_features(project, cluster_ids, ref_dir, dets, F, cache):
         for cid in cluster_ids:
             if cid not in by_id:
                 raise SystemExit(f"cluster #{cid} does not exist (have #1..#{len(by_id)})")
-            feats = F[[dets[m]["feat"] for m in by_id[cid]["members"]]]
-            if len(feats) > 64:
-                feats = feats[cache.get(cache.central, digest(feats),
-                                        lambda: np.argsort(ccip_cross(feats, feats).mean(1))[:64])]
-            refs.append(feats)
+            refs.append(most_central(F[[dets[m]["feat"] for m in by_id[cid]["members"]]], 64, cache))
     if ref_dir:
         from imgutils.detect import detect_person
         imgs = []
@@ -64,6 +62,27 @@ def reference_features(project, cluster_ids, ref_dir, dets, F, cache):
     if not refs:
         raise SystemExit("give --cluster and/or --ref")
     return np.concatenate(refs)
+
+
+def most_central(feats, n, cache):
+    if len(feats) <= n:
+        return feats
+    order = cache.get(cache.central, "order:" + digest(feats), lambda: np.argsort(ccip_cross(feats, feats).mean(1)))
+    return feats[order[:n]]
+
+
+def other_characters(project, cluster_ids, refs, dets, F, threshold, cache):
+    data = project.load("scan/clusters.json") or {"clusters": []}
+    feats, used = [], []
+    for c in data["clusters"]:
+        if c["id"] in cluster_ids:
+            continue
+        fc = most_central(F[[dets[m]["feat"] for m in c["members"]]], 4 * OTHER_PER_CLUSTER, cache)
+        fc = fc[match_score(fc, refs) > threshold][:OTHER_PER_CLUSTER]
+        if len(fc):
+            feats.append(fc)
+            used.append(c["id"])
+    return (np.concatenate(feats) if feats else None), used
 
 
 def match_score(feats, refs):
@@ -201,7 +220,7 @@ def check_overwrite(project, name, overwrite):
 
 def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, sim, series,
               keep_core, screencap, tagger, keep_text, keep_crowded, keep_offmodel, save_dropped, overwrite,
-              upscale_to=0, outfits=True, fresh=False):
+              upscale_to=0, outfits=True, fresh=False, auto_reject=True, keep_mono=False):
     from imgutils.detect import detect_halfbody
     from imgutils.ocr import ocr
     from imgutils.tagging import get_wd14_tags
@@ -223,12 +242,19 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
         threshold = threshold or DEFAULT_THRESHOLD
         refs = reference_features(project, cluster_ids, ref_dir, dets, F, cache)
         neg_names, negs = negatives.load(out_dir)
+        others, other_ids = (other_characters(project, cluster_ids, refs, dets, F, threshold, cache)
+                             if auto_reject else (None, []))
+        negs = [x for x in (negs, others) if x is not None]
+        negs = np.concatenate(negs) if negs else None
         chosen, best_scores, n_rejected = select(frames, dets, F, refs, threshold, relax, cache, negs)
         n_track = sum(1 for v in chosen.values() if v[2] == "track")
         print(f"[build] matched {len(chosen)} frames ({n_track} via shot tracking), threshold {threshold}")
-        if neg_names:
-            print(f"        {len(neg_names)} images rejected in review as another character: "
-                  f"{n_rejected} frames left out because they look like one of them")
+        sources = ([f"{len(other_ids)} other clusters"] if other_ids else []) + (
+            [f"{len(neg_names)} images rejected in review"] if neg_names else [])
+        others_line = (f"{n_rejected} frames left out as other characters (from {' and '.join(sources)})"
+                       if sources else "")
+        if others_line:
+            print("        " + others_line)
         print("        best score per frame: " + score_histogram(best_scores))
         if not chosen:
             raise SystemExit("no matches - try a higher --threshold or other clusters/refs")
@@ -280,7 +306,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
                         drop("another character in crop", crop, fr, t)
                         del boxes[t]
                     elif n < s:
-                        drop("like a rejected character", crop, fr, t)
+                        drop("looks like another character", crop, fr, t)
                         del boxes[t]
             for ctype, box in boxes.items():
                 rec = recs[ctype]
@@ -297,6 +323,9 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
                 rating, general, emb = cache.get(rec.setdefault("tags", {}), tagger, lambda: wd14(crop(ctype)))
                 if not keep_offmodel and any(t in general for t in OFFMODEL_TAGS):
                     drop("chibi or blurry", crop, fr, ctype)
+                    continue
+                if not keep_mono and any(t in general for t in MONOCHROME_TAGS):
+                    drop("black and white or sepia", crop, fr, ctype)
                     continue
                 portrait = None
                 if ctype != "head" and not any(t in general for t, _ in FRAMING_TAGS):
@@ -362,7 +391,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
     np.savez_compressed(out_dir / "emb.npz", stems=np.array(stems), emb=np.stack(embs).astype(np.float16))
     np.savez_compressed(out_dir / negatives.FEATS, stems=np.array(stems), feats=np.stack(ccips), refs=refs)
     project.save(f"characters/{out_dir.name}/build.json",
-                 {"name": name, "series": series, "clusters": cluster_ids,
+                 {"name": name, "series": series, "clusters": cluster_ids, "other_clusters": other_ids,
                   "ref_dir": str(ref_dir) if ref_dir else None,
                   "threshold": threshold, "core_tags": sorted(core), "items": meta})
     outfit_lines = []
@@ -371,7 +400,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
         found = run_outfits(project, name)
         outfit_lines = [f"Outfit {o['token']}: {o['count']} body crops - {', '.join(o['tags'])}" for o in found]
     report = make_report(name, keep, core, dist, n_review, len(chosen), n_track, dropped, best_scores, threshold,
-                         n_up, upscale_to, min_size, outfit_lines)
+                         n_up, upscale_to, min_size, outfit_lines, others_line)
     (out_dir / "report.txt").write_text(report, encoding="utf-8")
     print(report)
     print(f"Review:  {sorted_dir}\n  - check the _review folder first, delete anything that is not {name}\n"
@@ -386,9 +415,10 @@ def score_histogram(scores):
 
 
 def make_report(name, keep, core, dist, n_review, n_frames, n_track, dropped, best_scores, threshold,
-                n_up, upscale_to, min_size, outfit_lines=()):
+                n_up, upscale_to, min_size, outfit_lines=(), others_line=""):
     lines = [f"Character: {name}",
              f"Frames matched: {n_frames} ({n_track} via shot tracking) at threshold {threshold}",
+             *([others_line] if others_line else []),
              f"Best CCIP score per frame (lower = more alike): {score_histogram(best_scores)}",
              "Dropped crops: " + (", ".join(f"{v} {k}" for k, v in dropped.items() if v) or "-"),
              f"Images written: {len(keep)}  ({n_review} placed in _review for a manual check)",

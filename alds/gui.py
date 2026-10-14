@@ -38,12 +38,14 @@ def angle_name(key):
 
 
 def build_options():
-    return [(t("Separate outfits automatically (a tag per outfit after the trigger word)"), "outfits"),
+    return [(t("Leave out other characters, using the clusters you didn't pick"), "auto_reject"),
+            (t("Separate outfits automatically (a tag per outfit after the trigger word)"), "outfits"),
             (t("Put anime screencap at the start of every caption"), "screencap"),
             (t("Keep hair and eye tags in the captions"), "keep_core"),
             (t("Keep images with text on screen"), "keep_text"),
             (t("Keep images crowded with other characters"), "keep_crowded"),
             (t("Keep chibi and blurry drawings"), "keep_offmodel"),
+            (t("Keep black-and-white and sepia images (flashbacks)"), "keep_mono"),
             (t("Save the left-out images in a {folder} folder", folder="_dropped"), "save_dropped"),
             (t("Analyse from scratch, ignore the saved analysis (much slower, rarely needed)"), "fresh")]
 
@@ -362,7 +364,8 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
         run_build(p, name, ids, ref_dir, threshold, relax, int(min_size), sim,
                   (series or "").strip() or None, "keep_core" in opts, "screencap" in opts, tagger,
                   "keep_text" in opts, "keep_crowded" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
-                  overwrite, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts)
+                  overwrite, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts,
+                  "auto_reject" in opts, "keep_mono" in opts)
 
     progress(0, desc=t("Starting the build..."))
     log = captured(run, txn=txn.build_txn(p, name, ref_dir))
@@ -987,7 +990,8 @@ def build_page(demo, gpu):
                         tagger = gr.Dropdown(["EVA02_Large", "SwinV2_v3", "ConvNext_v3", "ViT_v3"],
                                              value="EVA02_Large", label=t("Tagging model"),
                                              info=t("EVA02_Large is the most accurate; the others are faster."))
-                        opts = gr.CheckboxGroup(build_options(), value=["outfits", "screencap"], label=t("Options"))
+                        opts = gr.CheckboxGroup(build_options(), value=["auto_reject", "outfits", "screencap"],
+                                                label=t("Options"))
                     overwrite = gr.Checkbox(label=t("Replace earlier results with the same name (clears your earlier "
                                                     "review)"))
                     build_btn = gr.Button(t("▶ Build the image set"), variant="primary")

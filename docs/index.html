@@ -211,8 +211,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
         </div>
         <div class="card">
           <h3 class="en">Filters out bad images</h3><h3 class="ar">يستبعد الصور السيئة</h3>
-          <p class="en">On-screen text, dark or faded frames, other characters in the way, chibi and blurry drawings, and near-duplicates.</p>
-          <p class="ar">النصوص على الشاشة، والإطارات المظلمة أو الباهتة، وتداخل شخصيات أخرى، والرسم المصغّر والضبابي، والصور المكررة تقريبًا.</p>
+          <p class="en">On-screen text, dark or faded frames, black-and-white or sepia flashbacks, other characters in the way, chibi and blurry drawings, and near-duplicates.</p>
+          <p class="ar">النصوص على الشاشة، والإطارات المظلمة أو الباهتة، ومشاهد الذكريات بالأبيض والأسود أو البني، وتداخل شخصيات أخرى، والرسم المصغّر والضبابي، والصور المكررة تقريبًا.</p>
         </div>
         <div class="card">
           <h3 class="en">Captions in Anima's style</h3><h3 class="ar">أوصاف بأسلوب Anima</h3>
@@ -449,7 +449,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
           <tr><th>Stage</th><th>How</th></tr>
           <tr><td>Recognising the character</td><td class="desc">CCIP compares every detected character with the references; the default threshold is 0.13.</td></tr>
           <tr><td>Cropping</td><td class="desc">Three crops: the whole body, the upper body and the head. Every head or upper-body crop is checked for identity again.</td></tr>
-          <tr><td>Leaving out</td><td class="desc">Text on screen (read with OCR), dark or faded frames, another character overlapping, chibi and blurry drawings.</td></tr>
+          <tr><td>Other characters</td><td class="desc">The clusters you didn't pick show what other characters look like; frames closer to one of them than to yours are left out.</td></tr>
+          <tr><td>Leaving out</td><td class="desc">Text on screen (read with OCR), dark or faded frames, black-and-white or sepia flashbacks, another character overlapping, chibi and blurry drawings.</td></tr>
           <tr><td>Removing duplicates</td><td class="desc">Visual similarity (WD14 embedding) ≥ 0.80; the sharpest image is kept.</td></tr>
           <tr><td>Tags</td><td class="desc">WD14 EVA02-Large, in Anima's style: lowercase, spaces instead of <code>_</code>.</td></tr>
           <tr><td>Caption order</td><td class="desc"><code>anime screencap, safe, 1boy, &lt;trigger&gt;, &lt;series&gt;, &lt;tags...&gt;</code></td></tr>
@@ -462,7 +463,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
           <tr><th>المرحلة</th><th>الطريقة</th></tr>
           <tr><td>التعرف على الشخصية</td><td class="desc">يقارن CCIP كل شخصية مكتشفة بالمراجع، والحد الافتراضي 0.13.</td></tr>
           <tr><td>القص</td><td class="desc">ثلاث قصّات: الجسم كاملًا والنصف العلوي والرأس، وتُفحص هوية كل قصّة للرأس أو النصف العلوي مرة أخرى.</td></tr>
-          <tr><td>الاستبعاد</td><td class="desc">النصوص على الشاشة (تُقرأ بـ OCR)، والإطارات المظلمة أو الباهتة، وتداخل شخصية أخرى، والرسم المصغّر والضبابي.</td></tr>
+          <tr><td>الشخصيات الأخرى</td><td class="desc">المجموعات التي لم تخترها تبيّن شكل الشخصيات الأخرى، فيُستبعد كل إطار أقرب إلى إحداها منه إلى شخصيتك.</td></tr>
+          <tr><td>الاستبعاد</td><td class="desc">النصوص على الشاشة (تُقرأ بـ OCR)، والإطارات المظلمة أو الباهتة، ومشاهد الذكريات بالأبيض والأسود أو البني، وتداخل شخصية أخرى، والرسم المصغّر والضبابي.</td></tr>
           <tr><td>إزالة التكرار</td><td class="desc">التشابه البصري (تضمين WD14) ≥ 0.80، ويُبقى الأوضح.</td></tr>
           <tr><td>الوسوم</td><td class="desc">WD14 EVA02-Large بأسلوب Anima: أحرف صغيرة ومسافات بدل <code>_</code>.</td></tr>
           <tr><td>ترتيب الوصف</td><td class="desc"><code>anime screencap, safe, 1boy, &lt;trigger&gt;, &lt;series&gt;, &lt;tags...&gt;</code></td></tr>

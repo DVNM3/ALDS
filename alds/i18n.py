@@ -175,6 +175,8 @@ AR = {
     "Tagging model": "نموذج الوسوم",
     "EVA02_Large is the most accurate; the others are faster.": "EVA02_Large الأدق، والبقية أسرع.",
     "Options": "خيارات",
+    "Leave out other characters, using the clusters you didn't pick":
+        "استبعاد الشخصيات الأخرى اعتمادًا على المجموعات التي لم تخترها",
     "Separate outfits automatically (a tag per outfit after the trigger word)":
         "فصل الأزياء تلقائيًا (وسم لكل زي بعد كلمة التفعيل)",
     "Put anime screencap at the start of every caption": "وسم anime screencap في أول كل وصف",
@@ -182,6 +184,7 @@ AR = {
     "Keep images with text on screen": "إبقاء الصور التي فيها نصوص",
     "Keep images crowded with other characters": "إبقاء الصور المزدحمة بشخصيات أخرى",
     "Keep chibi and blurry drawings": "إبقاء الرسم المصغّر (chibi) والضبابي",
+    "Keep black-and-white and sepia images (flashbacks)": "إبقاء الصور بالأبيض والأسود والبني (مشاهد الذكريات)",
     "Save the left-out images in a {folder} folder": "حفظ الصور المستبعدة في مجلد {folder}",
     "Analyse from scratch, ignore the saved analysis (much slower, rarely needed)":
         "إعادة التحليل من الصفر وتجاهل المحفوظ (أبطأ بكثير، نادرًا ما تحتاجه)",

@@ -28,7 +28,8 @@ Making a character LoRA from an anime usually means hours of taking screenshots,
 - **Finds your character.** Every character in the episodes is detected and grouped by identity, so you pick yours with one click. A few reference images work too, which helps with side characters.
 - **Skips the opening and ending.** The OP/ED and long recaps are found by comparing the episodes with each other, and left out.
 - **Three crops per shot.** Whole body, upper body and head, each one checked again to be the right character.
-- **Filters out bad images.** On-screen text, dark or faded frames, other characters in the way, chibi and blurry drawings, and near-duplicates.
+- **Leaves out other characters.** The clusters you didn't pick show what the other characters look like, so images that resemble one of them more than yours are left out before you review.
+- **Filters out bad images.** On-screen text, dark or faded frames, black-and-white or sepia flashbacks, other characters in the way, chibi and blurry drawings, and near-duplicates.
 - **Captions in Anima's style.** WD14 tags in Anima's order with your trigger word. Fixed features such as hair and eye colour are left to the trigger word.
 - **Sorted by shot and angle.** From close-up to full body, and front, three-quarter, side, back, from above and from below.
 - **Separates outfits.** When the character wears more than one outfit, each outfit gets its own tag.
@@ -131,8 +132,9 @@ projects\<project>\
 | Stage | How |
 |---|---|
 | Recognising the character | CCIP compares every detected character with the references; the default threshold is 0.13. |
+| Other characters | Images from the clusters you didn't pick that don't look like your character are used to leave out frames closer to another character than to yours (`--no-auto-reject` turns it off). |
 | Cropping | Three crops: the whole body, the upper body and the head. Every head or upper-body crop is checked for identity again. |
-| Leaving out | Text on screen (read with OCR), dark or faded frames, another character overlapping, chibi and blurry drawings. |
+| Leaving out | Text on screen (read with OCR), dark or faded frames, black-and-white or sepia flashbacks (`--keep-mono` keeps them), another character overlapping, chibi and blurry drawings. |
 | Removing duplicates | Visual similarity (WD14 embedding) ≥ 0.80; the sharpest image is kept. |
 | Tags | WD14 EVA02-Large, in Anima's style: lowercase, spaces instead of `_`. |
 | Caption order | `anime screencap, safe, 1boy, <trigger>, <series>, <tags...>` |

@@ -59,6 +59,9 @@ def main(argv=None):
     p.add_argument("--no-screencap-tag", action="store_true", help="don't prefix captions with 'anime screencap'")
     p.add_argument("--tagger", default="EVA02_Large", help="WD14 model: EVA02_Large, SwinV2_v3, ConvNext_v3, ViT_v3")
     p.add_argument("--keep-offmodel", action="store_true", help="keep crops tagged chibi / super deformed / blurry")
+    p.add_argument("--keep-mono", action="store_true", help="keep black-and-white and sepia crops (flashbacks)")
+    p.add_argument("--no-auto-reject", action="store_true",
+                   help="don't use the other clusters to leave out other characters")
     p.add_argument("--no-outfits", action="store_true", help="don't add per-outfit tokens to captions")
     p.add_argument("--save-dropped", action="store_true", help="also save filtered-out crops to _dropped/<reason>/")
     p.add_argument("--overwrite", action="store_true", help="replace an existing sorted/ folder")
@@ -153,7 +156,8 @@ def run_command(project, a):
         with txn.build_txn(project, a.name):
             run_build(project, a.name, a.cluster, a.ref, a.threshold, a.relax, min_size, a.sim, a.series,
                       a.keep_core, not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_crowded, a.keep_offmodel,
-                      a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh)
+                      a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh,
+                      not a.no_auto_reject, a.keep_mono)
     elif a.cmd == "reject":
         run_reject(project, a)
     elif a.cmd == "outfits":
