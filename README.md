@@ -4,6 +4,29 @@ Turns anime episodes into a ready-to-train image set for a LoRA of one character
 
 Project page: https://dvnm3.github.io/animelora/
 
+## Screenshots
+Pictures taken from the episodes are blurred here; in the program they show as they are.
+
+**Pick the character:** every character found in the episodes gets a card. Click yours, type a trigger word and build the image set.
+
+![Pick the character](docs/screenshots/pick.png)
+
+**Review:** go through the images with the keyboard. “Not this character” teaches the program what to leave out of every later build, and “Show” filters by outfit, shot and angle, or the images to check.
+
+![Review](docs/screenshots/review.png)
+
+**Tags:** every tag in the captions with its count. Search, then remove, replace or add a tag in all captions at once, with undo. Each outfit has its own tag.
+
+![Tags](docs/screenshots/tags.png)
+
+**Save the result:** a summary before saving, with the outfits, the upscaled images and the shot and angle distribution.
+
+![Save the result](docs/screenshots/save.png)
+
+**Arabic interface:** the same page right to left, one button away.
+
+![Arabic interface](docs/screenshots/review-ar.png)
+
 ## Installing
 ```bat
 py -3.12 -m venv .venv
