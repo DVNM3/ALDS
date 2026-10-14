@@ -1,6 +1,8 @@
+import gc
 import json
 import os
 import re
+import sys
 import warnings
 from pathlib import Path
 
@@ -44,6 +46,15 @@ def setup_runtime():
         pass
     gpu = "CUDAExecutionProvider" in ort.get_available_providers()
     print(f"[runtime] onnxruntime {ort.__version__} - {'GPU (CUDA)' if gpu else 'CPU only (slow)'}")
+
+
+def release_models():
+    for name, module in list(sys.modules.items()):
+        if name.startswith("imgutils") and module is not None:
+            for value in list(vars(module).values()):
+                if callable(getattr(value, "cache_clear", None)):
+                    value.cache_clear()
+    gc.collect()
 
 
 class Project:

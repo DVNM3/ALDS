@@ -1,3 +1,6 @@
+import functools
+import sys
+import types
 from pathlib import Path
 from unittest.mock import patch
 
@@ -154,3 +157,16 @@ class GuiTests(ProjectTest):
         log, dropdown, confirm = gui.do_delete_version(self.p.name, "hero", dropdown["value"], True)
         self.assertEqual(dropdown["choices"], [])
         self.assertFalse(confirm)
+
+    def test_long_actions_free_the_models_when_done(self):
+        module = types.ModuleType("imgutils.fake")
+        module.open_model = functools.lru_cache()(lambda name: object())
+        with patch.dict(sys.modules, {"imgutils.fake": module}):
+            gui.releasing(lambda: module.open_model("tagger"))()
+            self.assertEqual(module.open_model.cache_info().currsize, 0)
+            def failing_build():
+                module.open_model("tagger")
+                raise RuntimeError("build failed")
+            with self.assertRaises(RuntimeError):
+                gui.releasing(failing_build)()
+            self.assertEqual(module.open_model.cache_info().currsize, 0)

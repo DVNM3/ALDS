@@ -15,7 +15,7 @@ from PIL import Image
 
 from . import cancel, txn
 from .cancel import Cancelled
-from .common import PROJECTS_DIR, Project, inside, mmss, parse_ranges, safe_name
+from .common import PROJECTS_DIR, Project, inside, mmss, parse_ranges, release_models, safe_name
 from .i18n import AR, LANGS, lang, t, use
 
 
@@ -114,6 +114,16 @@ def saved_lang():
 def _session():
     from gradio.context import LocalContext
     return getattr(LocalContext.request.get(None), "session_hash", None)
+
+
+def releasing(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            release_models()
+    return wrapper
 
 
 def localized(fn):
@@ -1382,7 +1392,7 @@ def build_page(demo, gpu):
         .then(L(version_choices), [project, r_char], version_pick)
 
     def long_action(btn, stop, fn, inputs, outputs):
-        ev = btn.click(L(start_ui), None, stop, queue=False).then(L(fn), inputs, outputs, concurrency_id="gpu")
+        ev = btn.click(L(start_ui), None, stop, queue=False).then(L(releasing(fn)), inputs, outputs, concurrency_id="gpu")
         ev.then(end_ui, None, stop, queue=False)
         ev.failure(end_ui, None, stop, queue=False)
         return ev
