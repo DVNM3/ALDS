@@ -15,7 +15,7 @@ from PIL import Image
 
 from . import cancel, txn
 from .cancel import Cancelled
-from .common import PROJECTS_DIR, Project, mmss, parse_ranges, safe_name
+from .common import PROJECTS_DIR, Project, inside, mmss, parse_ranges, safe_name
 from .i18n import AR, LANGS, lang, t, use
 
 
@@ -154,8 +154,8 @@ def characters(pname):
 
 
 ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
-               ("already exists", "There are results with this name already. Tick “Replace earlier results” to "
-                                  "build it again, or pick another name"),
+               ("already exists", "There are results with this name already. Enable rebuilding to save a version "
+                                  "and build again, or pick another name."),
                ("no matches", "The character wasn't found. Raise “Match threshold” a little or pick other clusters"),
                ("no characters detected", "No characters were found in the episodes"),
                ("nothing scanned yet", "Scan at least one episode first (tab 1)"),
@@ -164,8 +164,7 @@ ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
                                   "the page"),
                ("no images in", "There are no images in the uploaded references"),
                ("not enough clear", "Not enough clear views to cluster"),
-               ("were deleted to save space", "This project's frames were deleted to save space. To build a new "
-                                              "character, scan the episodes in a new project"),
+               ("were deleted to save space", "Restore this project's frames in tab 1 before building again."),
                ("didn't split", "The cluster didn't split this strongly, lower “Split strength”"),
                ("too small to split", "The cluster is too small to split")]
 
@@ -176,21 +175,52 @@ def gui_error(e: SystemExit):
     return gr.Error(f"{t(hint)}\n\n{ltr(msg)}" if hint else ltr(msg))
 
 
-def captured(fn, *args, txn=None):
+def captured_result(fn, *args, txn=None):
     buf = io.StringIO()
     try:
-        with contextlib.redirect_stdout(buf):
-            if txn is None:
-                fn(*args)
-            else:
-                with txn:
-                    fn(*args)
+        with contextlib.redirect_stdout(buf), txn or contextlib.nullcontext():
+            result = fn(*args)
     except Cancelled:
+        cancel.reset()
         raise gr.Error(t("Stopped: everything it generated was removed, the project is back as it was."),
                        title=t("⏹ Stopped"))
     except SystemExit as e:
         raise gui_error(e)
-    return buf.getvalue()
+    return buf.getvalue(), result
+
+
+def captured(fn, *args, txn=None):
+    return captured_result(fn, *args, txn=txn)[0]
+
+
+_busy = set()
+
+
+@contextlib.contextmanager
+def working_on(folder):
+    folder = Path(folder).resolve()
+    _busy.add(folder)
+    try:
+        yield
+    finally:
+        _busy.discard(folder)
+
+
+def is_busy(path):
+    path = Path(path).resolve()
+    return any(path.is_relative_to(folder) for folder in tuple(_busy))
+
+
+BUSY = "This character is being rebuilt, restored or saved. Try again when it finishes."
+
+
+def guarded(fn):
+    @functools.wraps(fn)
+    def run(pname, char, *args):
+        if pname and char and is_busy(char_dir_of(pname, char)):
+            raise gr.Error(t(BUSY))
+        return fn(pname, char, *args)
+    return run
 
 
 def stop_label():
@@ -301,7 +331,7 @@ def do_split(pname, selected, cut, progress=gr.Progress(track_tqdm=True)):
 
 
 USAGE = {"frames": "Extracted frames", "scan": "Scan data", "clusters": "Cluster images",
-         "cache": "Saved analysis for rebuilds"}
+         "cache": "Saved analysis for rebuilds", "previews": "Build previews"}
 
 
 def usage_md(pname):
@@ -313,7 +343,7 @@ def usage_md(pname):
     gone = p.load("project.json", {}).get("frames_deleted")
     part = lambda l: t(USAGE[l]) if l in USAGE else t("Character {name}", name=l.replace("characters/", ""))
     lines = [t("**Project size: {size}**", size=fmt_bytes(sum(b for _, b in rows)))
-             + (t(" — frames deleted, no more builds") if gone else ""), "",
+             + (t(" — restore frames before building again") if gone else ""), "",
              t("| Part | Size |"), "|---|---|"]
     lines += [f"| {part(l)} | {ltr(fmt_bytes(b))} |" for l, b in rows]
     return "\n".join(lines)
@@ -323,8 +353,9 @@ def do_clean(pname, all_frames, confirm):
     from .cleanup import clean
     p = need_project(pname)
     if all_frames and not confirm:
-        raise gr.Error(t("Tick the confirmation first: deleting all frames is final and stops any rebuild"))
-    log = captured(clean, p, "all" if all_frames else "safe")
+        raise gr.Error(t("Confirm deleting the frames. The original episodes are needed to restore them."))
+    with working_on(p.dir):
+        log = captured(clean, p, "all" if all_frames else "safe")
     return log, usage_md(pname)
 
 
@@ -339,7 +370,7 @@ def pick_cluster(pname, selected, evt: gr.SelectData):
 
 
 def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
-             tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True)):
+             tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True), *, preview=False):
     from .build import check_overwrite, run_build
     p = need_project(pname)
     name = (name or "").strip()
@@ -348,11 +379,13 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
     ids = sorted(int(s.lstrip("#")) for s in selected or [])
     if not ids and not ref_files:
         raise gr.Error(t("Pick at least one cluster of images, or upload reference images"))
-    try:
-        check_overwrite(p, name, overwrite)
-    except SystemExit as e:
-        raise gui_error(e)
-    ref_dir = p.dir / "refs" / safe_name(name) if ref_files else None
+    if not preview:
+        try:
+            check_overwrite(p, name, overwrite)
+        except SystemExit as e:
+            raise gui_error(e)
+    ref_dir = ((p.preview_dir(name) / "refs" if preview else p.dir / "refs" / safe_name(name))
+               if ref_files else None)
     opts = set(opts or [])
 
     def run():
@@ -361,18 +394,106 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
             ref_dir.mkdir(parents=True)
             for f in ref_files:
                 shutil.copy2(f, ref_dir / Path(f).name)
-        run_build(p, name, ids, ref_dir, threshold, relax, int(min_size), sim,
+        return run_build(p, name, ids, ref_dir, threshold, relax, int(min_size), sim,
                   (series or "").strip() or None, "keep_core" in opts, "screencap" in opts, tagger,
                   "keep_text" in opts, "keep_crowded" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
                   overwrite, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts,
-                  "auto_reject" in opts, "keep_mono" in opts)
+                  "auto_reject" in opts, "keep_mono" in opts, 12 if preview else 0)
 
     progress(0, desc=t("Starting the build..."))
-    log = captured(run, txn=txn.build_txn(p, name, ref_dir))
+    with contextlib.nullcontext() if preview else working_on(p.char_dir(name)):
+        log, data = captured_result(run, txn=txn.preview_txn(p, name) if preview else txn.build_txn(p, name, ref_dir))
+    if preview:
+        return *preview_view(data), log, data
     chars = characters(p.name)
     char = p.char_dir(name).name
     return (log, gr.update(choices=chars, value=char), gr.update(choices=chars, value=char),
             gr.update(choices=chars, value=char), gr.Tabs(selected="review"))
+
+
+def do_preview(pname, selected, ref_files, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
+               tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True)):
+    return do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, threshold, min_size, sim,
+                    relax, tagger, opts, overwrite, progress, preview=True)
+
+
+def preview_view(data):
+    if not data:
+        return [], t("Preview 12 frames before building. Your finished images stay as they are.")
+    gallery = [(it["file"], t(it["reason"]) + (f" · {it['score']:.3f}" if it["score"] is not None else ""))
+               for it in data["items"]]
+    summary = t("{frames} sampled frames · {accepted} accepted crops. Duplicates are checked within this "
+                "sample. Upscaling and outfit tags are applied in the full build.",
+                frames=data["frames"], accepted=data["accepted"])
+    return gallery, summary
+
+
+def do_restore_frames(pname, folder, progress=gr.Progress(track_tqdm=True)):
+    from .restore import restore_frames
+    p = need_project(pname)
+    log = captured(restore_frames, p, (folder or "").strip().strip('"') or None)
+    return log, usage_md(pname), videos_table(pname)
+
+
+def version_choices(pname, char):
+    from .versions import list_versions
+    rows = list_versions(need_project(pname), char) if pname and char else []
+    choices = [(t("{date} · {n} images · {reason}", date=row["id"], n=row["images"], reason=t(row["reason"])),
+                row["id"]) for row in rows]
+    return gr.update(choices=choices, value=rows[0]["id"] if rows else None)
+
+
+def version_comparison(pname, char, version):
+    from .versions import compare_version
+    if not pname or not char or not version:
+        return t("No saved version selected.")
+    if is_busy(char_dir_of(pname, char)):
+        return t(BUSY)
+    try:
+        diff = compare_version(need_project(pname), char, version)
+    except SystemExit as e:
+        raise gui_error(e)
+    summary = t("Saved: {saved} images · Current: {current}\n\nCurrent result: {added} added, {removed} removed, "
+                "{captions} captions changed, {moved} moved to another group.", **diff)
+    if diff["settings"]:
+        summary += "\n\n" + t("Changed build settings (saved → current):") + "\n\n"
+        summary += "\n".join(f"- `{key}`: `{values[0]}` → `{values[1]}`" for key, values in sorted(diff["settings"].items()))
+    return summary
+
+
+def do_version(pname, char, version=None, restore=False, progress=gr.Progress(track_tqdm=True)):
+    from .versions import restore_version, save_version
+    p = need_project(pname)
+    if not char:
+        raise gr.Error(t("Pick the character"))
+    def run():
+        if restore:
+            if not version:
+                raise gr.Error(t("No saved version selected."))
+            restore_version(p, char, version)
+        else:
+            print(f"[versions] saved {save_version(p, char)}")
+    with working_on(p.char_dir(char)):
+        log = captured(run)
+    _alike_cache.pop(p.char_dir(char), None)
+    _identity_cache.pop(p.char_dir(char), None)
+    return log, version_choices(pname, char), []
+
+
+def do_restore_version(pname, char, version, progress=gr.Progress(track_tqdm=True)):
+    return do_version(pname, char, version, True, progress)
+
+
+@guarded
+def do_delete_version(pname, char, version, confirm):
+    from .versions import delete_version
+    p = need_project(pname)
+    if not char or not version:
+        raise gr.Error(t("No saved version selected."))
+    if not confirm:
+        raise gr.Error(t("Tick the confirmation first: a deleted version can't be restored."))
+    captured(delete_version, p, char, version)
+    return t("Deleted version {id}.", id=version), version_choices(pname, char), False
 
 
 def sorted_root(pname, char):
@@ -389,16 +510,31 @@ def is_review(root, f):
 
 
 _alike_cache = {}
+_identity_cache = {}
+
+
+def _memo(cache, char_dir, files, compute):
+    key = tuple((char_dir / f).stat().st_mtime_ns if (char_dir / f).exists() else 0 for f in files)
+    if cache.get(char_dir, (None,))[0] != key:
+        cache[char_dir] = (key, compute())
+    return cache[char_dir][1]
+
+
+def identity_review(pname, char):
+    if not pname or not char:
+        return {}
+    from . import negatives, positives
+    from .feedback import review_scores
+    char_dir = char_dir_of(pname, char)
+    return _memo(_identity_cache, char_dir, (negatives.FEATS, positives.FILE, negatives.FILE, "build.json"),
+                 lambda: review_scores(Project(safe_name(pname)), char))
 
 
 def look_alikes(pname, char):
-    from . import negatives
-    char_dir = sorted_root(pname, char).parent
-    key = tuple((char_dir / f).stat().st_mtime_ns if (char_dir / f).exists() else 0
-                for f in (negatives.FILE, negatives.FEATS))
-    if _alike_cache.get(char_dir, (None,))[0] != key:
-        _alike_cache[char_dir] = (key, negatives.look_alikes(char_dir) if key[0] else {})
-    return _alike_cache[char_dir][1]
+    from . import negatives, positives
+    char_dir = char_dir_of(pname, char)
+    return _memo(_alike_cache, char_dir, (negatives.FILE, negatives.FEATS, positives.FILE),
+                 lambda: negatives.look_alikes(char_dir))
 
 
 def list_files(pname, char, flt):
@@ -406,12 +542,17 @@ def list_files(pname, char, flt):
         return []
     root = sorted_root(pname, char)
     files = list(root.rglob("*.png")) if root.exists() else []
-    files.sort(key=lambda f: (not is_review(root, f), group_of(root, f), f.name))
+    scores = identity_review(pname, char)
+    uncertain = lambda f: scores.get(f.stem, {}).get("uncertain", False)
+    files.sort(key=lambda f: (not uncertain(f), scores[f.stem]["risk"] if uncertain(f) else 0,
+                              not is_review(root, f), group_of(root, f), f.name))
     if flt == "_review":
         files = [f for f in files if is_review(root, f)]
     elif flt == "_alike":
         alike = look_alikes(pname, char)
         files = sorted((f for f in files if f.stem in alike), key=lambda f: -alike[f.stem])
+    elif flt in ("_uncertain", "_confirmed"):
+        files = [f for f in files if scores.get(f.stem, {}).get(flt[1:], False)]
     elif flt and flt.startswith("outfit:"):
         files = [f for f in files if flt[7:] in caption_tags(f)]
     elif flt and flt != "all":
@@ -438,6 +579,11 @@ def filter_choices(pname, char):
     n_review = sum(is_review(root, f) for f in files)
     if n_review:
         choices.append((t("⚠ To check ({n})", n=n_review), "_review"))
+    scores = identity_review(pname, char)
+    for key, label in (("uncertain", "🔎 Ambiguous identity ({n})"), ("confirmed", "✅ Confirmed identity ({n})")):
+        count = sum(scores.get(f.stem, {}).get(key, False) for f in files)
+        if count:
+            choices.append((t(label, n=count), "_" + key))
     alike = look_alikes(pname, char)
     n_alike = sum(f.stem in alike for f in files)
     if n_alike:
@@ -469,7 +615,10 @@ def gallery_items(pname, char, files):
         return []
     root = sorted_root(pname, char)
     alike = look_alikes(pname, char)
-    return [(str(thumb(root.parent, f)), "🚫" if f.stem in alike else "⚠" if is_review(root, f) else None)
+    scores = identity_review(pname, char)
+    return [(str(thumb(root.parent, f)), "✅" if scores.get(f.stem, {}).get("confirmed") else
+             "🚫" if f.stem in alike else "🔎" if scores.get(f.stem, {}).get("uncertain") else
+             "⚠" if is_review(root, f) else None)
             for f in map(Path, files)]
 
 
@@ -488,6 +637,16 @@ def panel(pname, char, files, idx):
         info += t(" — ⚠ needs a check")
     if f.stem in look_alikes(pname, char):
         info += t(" — 🚫 looks like an image you rejected as another character")
+    current = identity_review(pname, char).get(f.stem)
+    if current:
+        info += "\n\n" + t("Current identity distance: {score}. This is a distance, not a confidence percentage.",
+                             score=f"{current['score']:.3f}")
+        if current["confirmed"]:
+            info += " " + t("✅ You confirmed this character.")
+        elif current["uncertain"]:
+            info += " " + t("🔎 Check identity: weak match or close to another character.")
+        if current["margin"] is not None:
+            info += " " + t("Margin to another character: {margin} (larger is clearer).", margin=f"{current['margin']:.3f}")
     if meta:
         m, s = divmod(int(meta["t"]), 60)
         info += "\n\n" + t("Crop: {crop} — episode {ep} at {at} — match score {score} (lower is better) — "
@@ -505,12 +664,13 @@ def stats_text(pname, char):
         return t("Pick a character.")
     root = sorted_root(pname, char)
     n_review = sum(is_review(root, Path(f)) for f in files)
-    from . import negatives
+    from . import negatives, positives
     trash = root.parent / "_deleted"
     n_del = len(list(trash.rglob("*.png"))) if trash.exists() else 0
     n_rej = len(negatives.load(root.parent)[0])
     return (t("**{n}** images — **{r}** to check — deleted: {d}", n=len(files), r=n_review, d=n_del)
-            + (t(" — rejected as another character: {n}", n=n_rej) if n_rej else ""))
+            + (t(" — rejected as another character: {n}", n=n_rej) if n_rej else "")
+            + t(" — confirmed references: {n}", n=len(positives.load(root.parent)[0])))
 
 
 def review_outputs(pname, char, files, idx, regallery=True):
@@ -544,44 +704,34 @@ def step(delta):
     return fn
 
 
-def _move_pair(src: Path, dst_dir: Path):
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst = dst_dir / src.name
-    shutil.move(str(src), str(dst))
-    txt = src.with_suffix(".txt")
-    if txt.exists():
-        shutil.move(str(txt), str(dst.with_suffix(".txt")))
-    return dst
-
-
-def _trash(pname, char, files, idx, undo, kind):
-    root = sorted_root(pname, char)
-    src = Path(files[idx])
-    dst = _move_pair(src, root.parent / "_deleted" / src.parent.relative_to(root))
-    return (undo or []) + [(str(src), str(dst), kind)]
-
-
 def filter_update(pname, char, flt):
     choices = filter_choices(pname, char)
     return gr.update(choices=choices, value=flt if flt in [v for _, v in choices] else "all")
 
 
+@guarded
 def delete_image(pname, char, flt, files, idx, undo):
+    from . import negatives
     if not files:
         raise gr.Error(t("No image selected"))
-    undo = _trash(pname, char, files, idx, undo, "delete")
+    src = Path(files[idx])
+    undo = (undo or []) + [(str(src), str(negatives.trash(char_dir_of(pname, char), src)), "delete")]
     files = list_files(pname, char, flt)
     return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
 
 
+@guarded
 def reject_image(pname, char, flt, files, idx, undo):
-    from . import negatives
+    from . import positives
     if not files:
         raise gr.Error(t("No image selected"))
-    if not negatives.reject(sorted_root(pname, char).parent, Path(files[idx]).stem):
+    char_dir, src = char_dir_of(pname, char), Path(files[idx])
+    was_confirmed = src.stem in positives.load(char_dir)[0]
+    dst = positives.reject_image(char_dir, src)
+    if dst is None:
         raise gr.Error(t("This character was built by an older version of the program: build it again once so it "
                          "can learn from rejections. Or remove the image with “Bad image”."))
-    undo = _trash(pname, char, files, idx, undo, "reject")
+    undo = (undo or []) + [(str(src), str(dst), "reject-confirmed" if was_confirmed else "reject")]
     alike = look_alikes(pname, char)
     n = sum(Path(f).stem in alike for f in list_files(pname, char, "all"))
     gr.Info(t("Rejected as another character. {n} remaining images look like it: pick “🚫 Like what you "
@@ -591,26 +741,31 @@ def reject_image(pname, char, flt, files, idx, undo):
     return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
 
 
+@guarded
 def undo_delete(pname, char, flt, files, idx, undo):
-    from . import negatives
+    from . import negatives, positives
     if not undo:
         raise gr.Error(t("Nothing to undo"))
     undo = list(undo)
-    orig, moved, *kind = undo.pop()
-    orig, moved = Path(orig), Path(moved)
-    _move_pair(moved, orig.parent)
-    if kind == ["reject"]:
-        negatives.remove(sorted_root(pname, char).parent, orig.stem)
+    orig, moved, kind = undo.pop()
+    orig, moved, char_dir = Path(orig), Path(moved), char_dir_of(pname, char)
+    if not inside(orig, char_dir / "sorted") or not inside(moved, char_dir / "_deleted"):
+        raise gr.Error(t("Nothing to undo"))
+    if kind == "delete":
+        negatives.move_pair(moved, orig.parent)
+    elif positives.unreject(char_dir, moved, orig.parent, kind == "reject-confirmed") is None:
+        raise gr.Error(t("Build this character once to save its identity features."))
     files = list_files(pname, char, flt)
     idx = files.index(str(orig)) if str(orig) in files else idx
     return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
 
 
+@guarded
 def forget_rejected(pname, char, flt, files, idx):
     from . import negatives
     if not char:
         raise gr.Error(t("Pick a character"))
-    char_dir = sorted_root(pname, char).parent
+    char_dir = char_dir_of(pname, char)
     n = len(negatives.load(char_dir)[0])
     negatives.clear(char_dir)
     gr.Info(t("The program forgot {n} rejected images. The images themselves stay deleted.", n=n))
@@ -618,14 +773,109 @@ def forget_rejected(pname, char, flt, files, idx):
     return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
 
 
+@guarded
+def confirm_image(pname, char, flt, files, idx):
+    from . import positives
+    if not files:
+        raise gr.Error(t("No image selected"))
+    src = files[idx]
+    if not positives.confirm(char_dir_of(pname, char), src):
+        raise gr.Error(t("Build this character once to save its identity features."))
+    gr.Info(t("Saved as an identity reference. Preview the effect before rebuilding."))
+    files = list_files(pname, char, flt)
+    idx = files.index(src) if src in files else idx
+    return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
+
+
+def confirmed_choices(pname, char):
+    from . import positives
+    names = positives.load(sorted_root(pname, char).parent)[0] if pname and char else []
+    return gr.update(choices=names, value=names[0] if names else None)
+
+
+def confirmed_image(pname, char, name):
+    from . import positives
+    if not pname or not char or not name:
+        return None
+    path = positives.thumbnail(sorted_root(pname, char).parent, name)
+    return str(path) if path.exists() else None
+
+
+@guarded
+def unconfirm_image(pname, char, flt, files, idx, name):
+    from . import positives
+    if not pname or not char or not name:
+        raise gr.Error(t("Pick a confirmed reference."))
+    positives.remove(char_dir_of(pname, char), name)
+    files = list_files(pname, char, flt)
+    return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
+
+
+IMPACT_COLUMNS = ["Episode", "Time", "Change", "Before distance", "After distance"]
+IMPACT_NOTE = ("Uses the last build's references and settings to compare identity matching without manual feedback "
+               "against all current confirmations and rejections. Counts are frames, before quality filters, "
+               "cropping and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.")
+
+
+def impact_view(data):
+    if not data:
+        return t("Run the feedback preview after changing confirmations or rejections."), table([], IMPACT_COLUMNS)
+    summary = t("Matched frames: {before} → {after}. New: {added}; excluded: {removed}; different person: {switched}.",
+                **{k: data[k] for k in ("before", "after", "added", "removed", "switched")})
+    summary += "\n\n" + t("References: {confirmed} confirmed, {rejected} rejected. Showing up to 24 changed frames.",
+                            confirmed=data["confirmed"], rejected=data["rejected"])
+    rows = [[f"v{r['vid']:02d}", mmss(r["t"]), t(r["change"]),
+             round(r["before"], 3) if r["before"] is not None else "—",
+             round(r["after"], 3) if r["after"] is not None else "—"] for r in data["items"]]
+    return summary, table(rows, IMPACT_COLUMNS)
+
+
+def impact_images(data):
+    images = []
+    if data:
+        p = Project(data["project"])
+        for row in data["items"]:
+            path = p.path(row["frame"])
+            if not path.exists():
+                continue
+            with Image.open(path) as source:
+                frame = source.convert("RGB")
+                for key, label in (("before_box", "Before"), ("after_box", "After")):
+                    if row[key] is not None:
+                        image = frame.crop(row[key])
+                        image.thumbnail((320, 320))
+                        images.append((image, f"{t(label)} · v{row['vid']:02d} {mmss(row['t'])} · {t(row['change'])}"))
+    return images
+
+
+def do_feedback_preview(pname, char, progress=gr.Progress(track_tqdm=True)):
+    from .feedback import preview_impact
+    p = need_project(pname)
+    if not char:
+        raise gr.Error(t("Pick the character"))
+    _, data = captured_result(preview_impact, p, char)
+    return *impact_view(data), impact_images(data), data
+
+
+def confirmed_view(pname, char):
+    return confirmed_choices(pname, char), None
+
+
+def clear_impact():
+    return *impact_view({}), [], {}
+
+
+@guarded
 def move_image(pname, char, flt, files, idx, target):
+    from . import negatives
     if not files or not target:
         raise gr.Error(t("Pick an image and the target group"))
-    _move_pair(Path(files[idx]), sorted_root(pname, char) / target)
+    negatives.move_pair(Path(files[idx]), sorted_root(pname, char) / target)
     return review_outputs(pname, char, list_files(pname, char, flt), idx)
 
 
-def save_caption(files, idx, caption):
+@guarded
+def save_caption(pname, char, files, idx, caption):
     if not files:
         raise gr.Error(t("No image selected"))
     Path(files[idx]).with_suffix(".txt").write_text((caption or "").strip(), encoding="utf-8")
@@ -664,13 +914,12 @@ def pick_tag(selected, evt: gr.SelectData):
     return sel
 
 
+@guarded
 def _tag_edit(pname, char, query, **kw):
-    from .tags import edit_tags
+    from .outfits import edit_captions
     if not char:
         raise gr.Error(t("Pick the character"))
-    from .outfits import sync_tokens
-    n = edit_tags(char_dir_of(pname, char), **kw)
-    sync_tokens(Project(safe_name(pname)), char, kw.get("remove", ()), kw.get("replace"))
+    n = edit_captions(Project(safe_name(pname)), char, **kw)
     gr.Info(t("Changed {n} captions", n=n))
     return tag_view(pname, char, query)
 
@@ -694,6 +943,7 @@ def tag_add(pname, char, add_text, query):
     return _tag_edit(pname, char, query, add=split_tags(add_text))
 
 
+@guarded
 def tag_undo(pname, char, query):
     from .tags import undo_last
     if not char:
@@ -708,6 +958,7 @@ def tag_undo(pname, char, query):
     return tag_view(pname, char, query)
 
 
+@guarded
 def rerun_outfits(pname, char, query):
     from .outfits import run_outfits
     p = need_project(pname)
@@ -788,7 +1039,8 @@ def do_save(pname, char, parent):
         raise gr.Error(t("There is a folder named {name} in that place that the program didn't make, so it won't "
                          "be overwritten. Pick another place.", name=out.name))
     save_settings(save_dir=str(out.parent))
-    log = captured(run_export, p, char, str(out), txn=txn.export_txn(p, char, out))
+    with working_on(p.char_dir(char)):
+        log = captured(run_export, p, char, str(out), txn=txn.export_txn(p, char, out))
     proj = p.load("project.json", {"videos": []})
     proj.setdefault("saved", {})[char] = str(out)
     p.save("project.json", proj)
@@ -922,11 +1174,15 @@ def build_page(demo, gpu):
                                       "with no character, frames inside the OP/ED, thumbnails and leftover copies. "
                                       "Nothing you need is lost."))
                         clean_safe_btn = gr.Button(t("🧹 Safe clean"))
-                        gr.Markdown(t("**Delete all frames** frees the most space and keeps your finished images, but "
-                                      "after it this project can't be built or re-clustered. Do it only when you're "
-                                      "done with the project."))
-                        clean_confirm = gr.Checkbox(label=t("I'm done with this project: delete all its frames"))
+                        gr.Markdown(t("**Delete all frames** keeps your finished images and saved versions. "
+                                      "Restore the frames from the original episodes before building again."))
+                        clean_confirm = gr.Checkbox(label=t("Delete extracted frames; keep finished images and versions"))
                         clean_all_btn = gr.Button(t("🗑 Delete all frames"), variant="stop")
+                        gr.Markdown(t("**Restore frames:** recover missing frames using the original episodes. "
+                                      "Character groups and reviewed images stay as they are."))
+                        restore_folder = gr.Textbox(label=t("Episodes folder if moved (optional)"), elem_classes="ltr")
+                        restore_frames_btn = gr.Button(t("↶ Restore missing frames"))
+                        stop_restore = gr.Button(stop_label(), variant="stop", visible=False)
             scan_log = gr.Textbox(lines=12, label=t("Log"), elem_id="log", autoscroll=True)
 
         with gr.Tab(t("2. Pick the character"), id="pick"):
@@ -992,21 +1248,58 @@ def build_page(demo, gpu):
                                              info=t("EVA02_Large is the most accurate; the others are faster."))
                         opts = gr.CheckboxGroup(build_options(), value=["auto_reject", "outfits", "screencap"],
                                                 label=t("Options"))
-                    overwrite = gr.Checkbox(label=t("Replace earlier results with the same name (clears your earlier "
-                                                    "review)"))
+                    overwrite = gr.Checkbox(label=t("Rebuild this character: save a version and keep matching reviews"))
+                    preview_btn = gr.Button(t("🔎 Preview these settings"))
+                    stop_preview = gr.Button(stop_label(), variant="stop", visible=False)
                     build_btn = gr.Button(t("▶ Build the image set"), variant="primary")
                     stop_build = gr.Button(stop_label(), variant="stop", visible=False)
+            with gr.Accordion(t("Settings preview"), open=True):
+                preview_state = gr.State({})
+                preview_summary = gr.Markdown(preview_view({})[1])
+                preview_gal = gr.Gallery(columns=6, height=360, label=t("Accepted and excluded crops"),
+                                         object_fit="contain")
             build_log = gr.Textbox(lines=14, label=t("Report"), elem_id="log")
 
         with gr.Tab(t("3. Review"), id="review"):
-            gr.Markdown(t("Remove every image that isn't the character, starting with the ones marked ⚠. **N** (not "
-                          "this character): an image of another character - the program learns from it, marks what "
-                          "looks like it with 🚫 and leaves it out of every later build. **Delete**: a bad image of "
-                          "the character itself; nothing is learned. **← →** to move, **Ctrl+Z** to undo."))
+            gr.Markdown(t("Start with 🔎 ambiguous identities and ⚠ images to check. Confirm clear examples with "
+                          "**Definitely this character**. **N** rejects another character; **Delete** removes a bad "
+                          "image without learning its identity. **← →** to move, **Ctrl+Z** to undo removal. "
+                          "Manage confirmations and preview their effect in **Identity references and feedback preview**."))
             with gr.Row():
                 r_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
                 r_filter = gr.Dropdown(label=t("Show"), choices=[(t("All"), "all")], value="all", scale=2)
                 r_stats = gr.Markdown()
+            with gr.Accordion(t("Saved build versions"), open=False):
+                gr.Markdown(t("A version is saved before every rebuild. Restoring also saves the current result. "
+                              "Versions stay inside this project; images that didn't change are stored only once."))
+                with gr.Row():
+                    version_pick = gr.Dropdown(label=t("Saved version"), choices=[], scale=3)
+                    version_refresh = gr.Button(t("🔄 Refresh"), scale=1)
+                version_diff = gr.Markdown()
+                with gr.Row():
+                    version_save = gr.Button(t("💾 Save current version"))
+                    version_restore = gr.Button(t("↶ Restore selected version"))
+                stop_version = gr.Button(stop_label(), variant="stop", visible=False)
+                with gr.Row():
+                    version_delete_confirm = gr.Checkbox(label=t("Delete the selected version for good"), scale=3)
+                    version_delete = gr.Button(t("🗑 Delete version"), variant="stop", scale=1)
+                version_log = gr.Textbox(label=t("Log"), lines=3)
+            with gr.Accordion(t("Identity references and feedback preview"), open=False):
+                gr.Markdown(t("Confirm clear examples, especially different angles and outfits. Ambiguous images appear first in All."))
+                with gr.Row():
+                    with gr.Column():
+                        confirmed_pick = gr.Dropdown(label=t("Confirmed references"), choices=[], elem_classes="ltr")
+                        confirmed_thumb = gr.Image(interactive=False, height=200, show_label=False)
+                        unconfirm_btn = gr.Button(t("↶ Remove this confirmation"))
+                    with gr.Column(scale=2):
+                        gr.Markdown(t(IMPACT_NOTE))
+                        impact_btn = gr.Button(t("🔎 Preview confirmation and rejection effects"))
+                        stop_impact = gr.Button(stop_label(), variant="stop", visible=False)
+                        impact_summary = gr.Markdown()
+                        impact_table = gr.Dataframe(headers=IMPACT_COLUMNS, interactive=False)
+                impact_gal = gr.Gallery(label=t("Changed matches (when source frames are available)"),
+                                        columns=4, height=350, object_fit="contain")
+                impact_state = gr.State({})
             with gr.Row():
                 with gr.Column(scale=3):
                     r_gal = gr.Gallery(columns=6, height=720, allow_preview=False, object_fit="contain",
@@ -1018,6 +1311,7 @@ def build_page(demo, gpu):
                     with gr.Row():
                         prev_btn = gr.Button(t("← Previous"), elem_id="btn-prev")
                         next_btn = gr.Button(t("Next →"), elem_id="btn-next")
+                    confirm_btn = gr.Button(t("✅ Definitely this character"), variant="primary")
                     with gr.Row():
                         reject_btn = gr.Button(t("🚫 Not this character (N)"), variant="stop", elem_id="btn-reject")
                         del_btn = gr.Button(t("🗑 Bad image (Delete)"), elem_id="btn-del")
@@ -1082,8 +1376,10 @@ def build_page(demo, gpu):
                 del_project_btn = gr.Button(t("🗑 Delete the project"), variant="stop")
 
     proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
-    project.change(L(load_project), project, proj_outputs)
-    refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project, [project, *proj_outputs])
+    project.change(L(load_project), project, proj_outputs) \
+        .then(L(version_choices), [project, r_char], version_pick)
+    refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project, [project, *proj_outputs]) \
+        .then(L(version_choices), [project, r_char], version_pick)
 
     def long_action(btn, stop, fn, inputs, outputs):
         ev = btn.click(L(start_ui), None, stop, queue=False).then(L(fn), inputs, outputs, concurrency_id="gpu")
@@ -1091,50 +1387,88 @@ def build_page(demo, gpu):
         ev.failure(end_ui, None, stop, queue=False)
         return ev
 
-    for stop in (stop_scan, stop_auto, stop_clu, stop_build, stop_export):
+    for stop in (stop_scan, stop_auto, stop_clu, stop_build, stop_export, stop_restore, stop_preview, stop_version, stop_impact):
         stop.click(L(press_stop), None, stop, queue=False)
 
-    long_action(scan_btn, stop_scan, do_scan, [project, videos, skip, auto, auto_min, min_gap, keep_diff],
+    scanned = long_action(scan_btn, stop_scan, do_scan, [project, videos, skip, auto, auto_min, min_gap, keep_diff],
                 [scan_log, project, *proj_outputs])
-    long_action(autoskip_btn, stop_auto, do_autoskip, [project, auto, auto_min], [scan_log, *proj_outputs])
-    long_action(recluster_btn, stop_clu, do_recluster, [project, cut, min_csize],
+    autoskipped = long_action(autoskip_btn, stop_auto, do_autoskip, [project, auto, auto_min], [scan_log, *proj_outputs])
+    reclustered = long_action(recluster_btn, stop_clu, do_recluster, [project, cut, min_csize],
                 [recluster_log, clusters_gal, chosen])
-    long_action(split_btn, stop_clu, do_split, [project, chosen, split_cut], [recluster_log, clusters_gal, chosen])
-    clean_safe_btn.click(L(lambda p: do_clean(p, False, False)), project, [scan_log, usage])
-    clean_all_btn.click(L(lambda p, c: do_clean(p, True, c)), [project, clean_confirm], [scan_log, usage])
+    split = long_action(split_btn, stop_clu, do_split, [project, chosen, split_cut], [recluster_log, clusters_gal, chosen])
+    clean_safe_btn.click(L(lambda p: do_clean(p, False, False)), project, [scan_log, usage], concurrency_id="gpu")
+    clean_all_btn.click(L(lambda p, c: do_clean(p, True, c)), [project, clean_confirm], [scan_log, usage], concurrency_id="gpu")
+    long_action(restore_frames_btn, stop_restore, do_restore_frames, [project, restore_folder],
+                [scan_log, usage, vids_df])
     clusters_gal.select(L(pick_cluster), [project, chosen], [chosen, sheet])
     upscale_on.change(lambda on: (gr.update(visible=on), gr.update(value=320 if on else 448)),
                       upscale_on, [upscale_to, min_size])
-    long_action(build_btn, stop_build, do_build,
-                [project, chosen, refs, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
-                 tagger, opts, overwrite],
+    build_inputs = [project, chosen, refs, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
+                    tagger, opts, overwrite]
+    long_action(preview_btn, stop_preview, do_preview, build_inputs,
+                [preview_gal, preview_summary, build_log, preview_state])
+    def clear_preview():
+        return [], t("Settings or identity feedback changed. Run the preview again to see the updated result."), {}
+    for control in build_inputs:
+        control.change(L(clear_preview), None, [preview_gal, preview_summary, preview_state], concurrency_id="gpu")
+    built = long_action(build_btn, stop_build, do_build, build_inputs,
                 [build_log, r_char, e_char, t_char, tabs]) \
         .success(L(change_char), [project, r_char],
-                 [r_filter, move_to, r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats])
+                 [r_filter, move_to, r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]) \
+        .success(L(version_choices), [project, r_char], version_pick) \
+        .success(lambda: [], None, undo_st)
 
     rv_out = [r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]
     r_char.change(L(change_char), [project, r_char], [r_filter, move_to, *rv_out])
+    r_char.change(L(version_choices), [project, r_char], version_pick)
+    project.change(lambda: [], None, undo_st)
+    r_char.change(lambda: [], None, undo_st)
+    version_refresh.click(L(version_choices), [project, r_char], version_pick) \
+        .then(L(version_comparison), [project, r_char, version_pick], version_diff)
+    version_pick.change(L(version_comparison), [project, r_char, version_pick], version_diff)
+    version_delete.click(L(do_delete_version), [project, r_char, version_pick, version_delete_confirm],
+                         [version_log, version_pick, version_delete_confirm], concurrency_id="review")
+    long_action(version_save, stop_version, do_version, [project, r_char], [version_log, version_pick, undo_st])
+    restored = long_action(version_restore, stop_version, do_restore_version, [project, r_char, version_pick],
+                [version_log, version_pick, undo_st]) \
+        .success(L(change_char), [project, r_char], [r_filter, move_to, *rv_out])
     r_filter.change(L(load_review), [project, r_char, r_filter], rv_out)
     r_gal.select(L(select_image), [project, r_char, files_st], rv_out)
     prev_btn.click(L(step(-1)), [project, r_char, files_st, idx_st], rv_out)
     next_btn.click(L(step(+1)), [project, r_char, files_st, idx_st], rv_out)
     trash_in = [project, r_char, r_filter, files_st, idx_st, undo_st]
-    del_btn.click(L(delete_image), trash_in, [*rv_out, undo_st, r_filter])
-    reject_btn.click(L(reject_image), trash_in, [*rv_out, undo_st, r_filter])
-    undo_btn.click(L(undo_delete), trash_in, [*rv_out, undo_st, r_filter])
-    forget_btn.click(L(forget_rejected), [project, r_char, r_filter, files_st, idx_st], [*rv_out, r_filter])
-    move_btn.click(L(move_image), [project, r_char, r_filter, files_st, idx_st, move_to], rv_out)
-    save_btn.click(L(save_caption), [files_st, idx_st, r_caption], None)
+    del_btn.click(L(delete_image), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
+    rejected = reject_btn.click(L(reject_image), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
+    undone = undo_btn.click(L(undo_delete), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
+    forgotten = forget_btn.click(L(forget_rejected), [project, r_char, r_filter, files_st, idx_st], [*rv_out, r_filter], concurrency_id="review")
+    confirmed = confirm_btn.click(L(confirm_image), [project, r_char, r_filter, files_st, idx_st],
+                                  [*rv_out, r_filter], concurrency_id="review")
+    unconfirmed = unconfirm_btn.click(L(unconfirm_image), [project, r_char, r_filter, files_st, idx_st, confirmed_pick],
+                                     [*rv_out, r_filter], concurrency_id="review")
+    confirmed_out = [confirmed_pick, confirmed_thumb]
+    impact_out = [impact_summary, impact_table, impact_gal, impact_state]
+    for event in (built, restored, rejected, undone, forgotten, confirmed, unconfirmed, scanned, autoskipped, reclustered, split):
+        event.success(L(confirmed_view), [project, r_char], confirmed_out)
+        event.success(L(clear_impact), None, impact_out, concurrency_id="gpu")
+        event.success(L(clear_preview), None, [preview_gal, preview_summary, preview_state], concurrency_id="gpu")
+    for control in (project, r_char):
+        control.change(L(confirmed_view), [project, r_char], confirmed_out)
+        control.change(L(clear_impact), None, impact_out, concurrency_id="gpu")
+    confirmed_pick.change(L(confirmed_image), [project, r_char, confirmed_pick], confirmed_thumb)
+    long_action(impact_btn, stop_impact, do_feedback_preview, [project, r_char],
+                [impact_summary, impact_table, impact_gal, impact_state])
+    move_btn.click(L(move_image), [project, r_char, r_filter, files_st, idx_st, move_to], rv_out, concurrency_id="review")
+    save_btn.click(L(save_caption), [project, r_char, files_st, idx_st, r_caption], None, concurrency_id="review")
 
     t_out = [t_table, t_status, t_selected]
     t_char.change(L(tag_view), [project, t_char, t_search], t_out)
     t_search.change(L(tag_view), [project, t_char, t_search], t_out)
     t_table.select(pick_tag, t_selected, t_selected)
-    t_remove_btn.click(L(tag_remove), [project, t_char, t_selected, t_search], t_out)
-    t_replace_btn.click(L(tag_replace), [project, t_char, t_selected, t_new, t_search], t_out)
-    t_add_btn.click(L(tag_add), [project, t_char, t_add_text, t_search], t_out)
-    t_undo_btn.click(L(tag_undo), [project, t_char, t_search], t_out)
-    t_outfits_btn.click(L(rerun_outfits), [project, t_char, t_search], [*t_out, t_log])
+    t_remove_btn.click(L(tag_remove), [project, t_char, t_selected, t_search], t_out, concurrency_id="review")
+    t_replace_btn.click(L(tag_replace), [project, t_char, t_selected, t_new, t_search], t_out, concurrency_id="review")
+    t_add_btn.click(L(tag_add), [project, t_char, t_add_text, t_search], t_out, concurrency_id="review")
+    t_undo_btn.click(L(tag_undo), [project, t_char, t_search], t_out, concurrency_id="review")
+    t_outfits_btn.click(L(rerun_outfits), [project, t_char, t_search], [*t_out, t_log], concurrency_id="review")
 
     sum_in, sum_out = [project, e_char, e_out], [e_summary, groups_df]
     e_char.change(L(save_summary), sum_in, sum_out)
@@ -1145,14 +1479,15 @@ def build_page(demo, gpu):
     tabs.select(L(tag_view), [project, t_char, t_search], t_out)
     long_action(export_btn, stop_export, do_save, [project, e_char, e_out], [export_log]) \
         .success(L(delete_hint), project, del_hint)
-    del_project_btn.click(L(delete_project), [project, del_confirm], [project, del_confirm])
+    del_project_btn.click(L(delete_project), [project, del_confirm], [project, del_confirm], concurrency_id="gpu")
 
     texts = static_texts(demo)
     for block, props in ((title, {"value": lambda: title_md(gpu)}), (lang_btn, {"value": other_language}),
                          (opts, {"choices": build_options})):
         texts.setdefault(block._id, (block, {}))[1].update(props)
     refreshed = [vids_df, clusters_gal, usage, r_filter, move_to, r_info, r_stats, t_table, t_status, e_summary,
-                 groups_df, del_hint]
+                 groups_df, del_hint, version_pick, version_diff, preview_gal, preview_summary,
+                 impact_summary, impact_table, impact_gal]
     switch_outputs = [block for block, _ in texts.values()] + [b for b in refreshed if b._id not in texts]
     tab_names = [(props["label"], AR[props["label"]]) for block, props in texts.values()
                  if isinstance(block, gr.Tab)]
@@ -1169,7 +1504,7 @@ def build_page(demo, gpu):
 
     demo.load(L(init_page), project, [lang_box, project, *proj_outputs]).then(None, lang_box, None, js=set_direction)
 
-    def switch_language(pname, char, files, idx, tchar, query, echar, parent):
+    def switch_language(pname, char, files, idx, tchar, query, echar, parent, version, preview, impact):
         from .aitk import save_settings
         new = "en" if lang() == "ar" else "ar"
         _session_langs[_session()] = new
@@ -1181,6 +1516,8 @@ def build_page(demo, gpu):
                        for block, props in texts.values()}
             rows, status, _ = _tag_state(pname, tchar, query)
             summary, groups = save_summary(pname, echar, parent)
+            preview_images, preview_text = preview_view(preview)
+            impact_text, impact_rows = impact_view(impact)
             for block, kw in ((vids_df, {"value": videos_table(pname)}),
                               (clusters_gal, {"value": clusters_view(pname)[0]}),
                               (usage, {"value": usage_md(pname)}),
@@ -1192,11 +1529,19 @@ def build_page(demo, gpu):
                               (t_status, {"value": status}),
                               (e_summary, {"value": summary}),
                               (groups_df, {"value": groups}),
-                              (del_hint, {"value": delete_hint(pname)})):
+                              (del_hint, {"value": delete_hint(pname)}),
+                              (version_pick, {"choices": version_choices(pname, char)["choices"], "value": version}),
+                              (version_diff, {"value": version_comparison(pname, char, version)}),
+                              (preview_gal, {"value": preview_images}),
+                              (preview_summary, {"value": preview_text}),
+                              (impact_summary, {"value": impact_text}),
+                              (impact_table, {"value": impact_rows}),
+                              (impact_gal, {"value": impact_images(impact)})):
                 updates.setdefault(block._id, {}).update(kw)
         return [page_language(new)] + [gr.update(**updates[block._id]) for block in switch_outputs]
 
-    lang_btn.click(L(switch_language), [project, r_char, files_st, idx_st, t_char, t_search, e_char, e_out],
+    lang_btn.click(L(switch_language), [project, r_char, files_st, idx_st, t_char, t_search, e_char, e_out,
+                                      version_pick, preview_state, impact_state],
                    [lang_box, *switch_outputs]).then(None, lang_box, None, js=set_direction)
     return texts
 

@@ -3,7 +3,10 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from .common import load_json, save_json
+
 HISTORY_KEEP = 20
+EDITS = "tag_edits.json"
 
 
 def split_tags(text: str):
@@ -30,7 +33,27 @@ def _snapshot(char_dir: Path, files):
         old.unlink()
 
 
-def edit_tags(char_dir: Path, remove=(), replace=None, add=()) -> int:
+def apply_edit(tags, remove, replace, add):
+    new = []
+    for t in tags:
+        if t in remove:
+            continue
+        new += split_tags(replace[t]) if t in replace else [t]
+    return list(dict.fromkeys([*new, *add]))
+
+
+def load_edits(char_dir: Path):
+    return load_json(Path(char_dir) / EDITS, [])
+
+
+def _save_edits(char_dir: Path, edits):
+    if edits:
+        save_json(Path(char_dir) / EDITS, edits)
+    else:
+        (Path(char_dir) / EDITS).unlink(missing_ok=True)
+
+
+def edit_tags(char_dir: Path, remove=(), replace=None, add=(), is_token=lambda tag: False) -> int:
     files = caption_files(char_dir)
     remove = {t.strip() for t in remove if t.strip()}
     replace = {k.strip(): v for k, v in (replace or {}).items() if k.strip()}
@@ -38,16 +61,13 @@ def edit_tags(char_dir: Path, remove=(), replace=None, add=()) -> int:
     if not files or not (remove or replace or add):
         return 0
     _snapshot(char_dir, files)
+    _save_edits(char_dir, load_edits(char_dir) + [{"remove": sorted(t for t in remove if not is_token(t)),
+                                                   "replace": {k: v for k, v in replace.items() if not is_token(k)},
+                                                   "add": add}])
     changed = 0
     for f in files:
         old = split_tags(f.read_text(encoding="utf-8"))
-        new = []
-        for t in old:
-            if t in remove:
-                continue
-            new += split_tags(replace[t]) if t in replace else [t]
-        new += [t for t in add if t not in new]
-        new = list(dict.fromkeys(new))
+        new = apply_edit(old, remove, replace, add)
         if new != old:
             f.write_text(", ".join(new), encoding="utf-8")
             changed += 1
@@ -67,6 +87,7 @@ def undo_last(char_dir: Path) -> int:
             where[name].write_text(text, encoding="utf-8")
             restored += 1
     snaps[-1].unlink()
+    _save_edits(char_dir, load_edits(char_dir)[:-1])
     return restored
 
 

@@ -64,7 +64,9 @@ def main(argv=None):
                    help="don't use the other clusters to leave out other characters")
     p.add_argument("--no-outfits", action="store_true", help="don't add per-outfit tokens to captions")
     p.add_argument("--save-dropped", action="store_true", help="also save filtered-out crops to _dropped/<reason>/")
-    p.add_argument("--overwrite", action="store_true", help="replace an existing sorted/ folder")
+    p.add_argument("--overwrite", action="store_true", help="save a version, rebuild and carry matching reviews forward")
+    p.add_argument("--preview", type=int, nargs="?", const=12, default=0, choices=range(1, 61), metavar="FRAMES",
+                   help="preview filters on 1-60 sampled frames without replacing the built images (default 12)")
     p.add_argument("--fresh", action="store_true",
                    help="ignore the saved crop analysis (tags, OCR, faces, upscales) and redo it all")
 
@@ -74,6 +76,16 @@ def main(argv=None):
     p.add_argument("-n", "--name", required=True)
     p.add_argument("images", nargs="*", help="image names in sorted/, e.g. v01_00616.0s_full.png")
     p.add_argument("--clear", action="store_true", help="forget all rejected images (the files stay deleted)")
+
+    p = sub.add_parser("confirm", help="use built images as identity references; without images, list confirmations")
+    p.add_argument("-p", "--project", required=True)
+    p.add_argument("-n", "--name", required=True)
+    p.add_argument("images", nargs="*", help="image filenames or stems")
+    p.add_argument("--remove", action="store_true", help="remove the named confirmations")
+
+    p = sub.add_parser("feedback", help="preview the identity effect of manual feedback without changing the dataset")
+    p.add_argument("-p", "--project", required=True)
+    p.add_argument("-n", "--name", required=True)
 
     p = sub.add_parser("outfits", help="re-run outfit separation (e.g. after deleting images in review)")
     p.add_argument("-p", "--project", required=True)
@@ -104,7 +116,20 @@ def main(argv=None):
     p = sub.add_parser("clean", help="free disk space; without --all only frames nothing will read again")
     p.add_argument("-p", "--project", required=True)
     p.add_argument("--all", action="store_true",
-                   help="delete ALL extracted frames: finished images stay, but no more builds for this project")
+                   help="delete ALL extracted frames; restore-frames makes the project buildable again")
+
+    p = sub.add_parser("restore-frames", help="restore missing character frames from the original episodes")
+    p.add_argument("-p", "--project", required=True)
+    p.add_argument("--videos-dir", help="folder containing the original episodes if they were moved")
+
+    p = sub.add_parser("versions", help="list, save, compare, restore or delete a character's saved build versions")
+    p.add_argument("-p", "--project", required=True)
+    p.add_argument("-n", "--name", required=True)
+    action = p.add_mutually_exclusive_group()
+    action.add_argument("--save", action="store_true", help="save the current images and review state")
+    action.add_argument("--restore", metavar="VERSION", help="restore a saved version; save the current result first")
+    action.add_argument("--compare", metavar="VERSION", help="compare a saved version with the current result")
+    action.add_argument("--delete", metavar="VERSION", help="delete a saved version for good")
 
     p = sub.add_parser("gui", help="open the graphical interface in the browser")
     p.add_argument("--port", type=int, default=7860)
@@ -115,7 +140,7 @@ def main(argv=None):
         from .gui import launch
         return launch(a.port, not a.no_browser)
     project = Project(a.project)
-    if a.cmd not in ("export", "tags", "outfits", "clean"):
+    if a.cmd not in ("export", "tags", "outfits", "clean", "restore-frames", "versions", "confirm"):
         setup_runtime()
     try:
         run_command(project, a)
@@ -152,14 +177,51 @@ def run_command(project, a):
     elif a.cmd == "build":
         from .build import check_overwrite, run_build
         min_size = a.min_size or (320 if a.upscale else 448)
-        check_overwrite(project, a.name, a.overwrite)
-        with txn.build_txn(project, a.name):
+        if not a.preview:
+            check_overwrite(project, a.name, a.overwrite)
+        with txn.preview_txn(project, a.name) if a.preview else txn.build_txn(project, a.name):
             run_build(project, a.name, a.cluster, a.ref, a.threshold, a.relax, min_size, a.sim, a.series,
                       a.keep_core, not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_crowded, a.keep_offmodel,
                       a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh,
-                      not a.no_auto_reject, a.keep_mono)
+                      not a.no_auto_reject, a.keep_mono, a.preview)
+    elif a.cmd == "restore-frames":
+        from .restore import restore_frames
+        restore_frames(project, a.videos_dir)
+    elif a.cmd == "versions":
+        from .versions import compare_version, delete_version, list_versions, restore_version, save_version
+        if a.save:
+            print(f"[versions] saved {save_version(project, a.name)}")
+        elif a.restore:
+            restore_version(project, a.name, a.restore)
+        elif a.compare:
+            for key, value in compare_version(project, a.name, a.compare).items():
+                print(f"{key}: {value}")
+        elif a.delete:
+            delete_version(project, a.name, a.delete)
+            print(f"[versions] deleted {a.delete}")
+        else:
+            rows = list_versions(project, a.name)
+            for row in rows:
+                print(f"{row['id']}  {row['images']} images  {row['reason']}")
+            if not rows:
+                print(f"[versions] no saved versions for '{a.name}'")
     elif a.cmd == "reject":
         run_reject(project, a)
+    elif a.cmd == "confirm":
+        from . import positives
+        char = project.char_dir(a.name)
+        for image in a.images:
+            if a.remove:
+                positives.remove(char, image_stem(image))
+            elif not positives.confirm(char, built_image(char, image)):
+                raise SystemExit("Build this character once to save its identity features.")
+        print("[confirm] " + ", ".join(positives.load(char)[0]))
+    elif a.cmd == "feedback":
+        import json
+        from .feedback import preview_impact
+        print(json.dumps(preview_impact(project, a.name), indent=2))
+        print("Identity matching only, using the last build's references/settings, before quality filters. "
+              "The dataset is unchanged; deleted images stay deleted.")
     elif a.cmd == "outfits":
         from .outfits import run_outfits
         run_outfits(project, a.name)
@@ -185,8 +247,19 @@ def run_command(project, a):
         clean(project, "all" if a.all else "safe")
 
 
+def image_stem(name):
+    return Path(name).stem if Path(name).suffix.lower() == ".png" else Path(name).name
+
+
+def built_image(char_dir, name):
+    hits = [p for p in (char_dir / "sorted").rglob("*.png") if p.stem == image_stem(name)]
+    if len(hits) != 1:
+        raise SystemExit(f"expected one built image named {name} in {char_dir / 'sorted'}, found {len(hits)}")
+    return hits[0]
+
+
 def run_reject(project, a):
-    from . import negatives
+    from . import negatives, positives
     char_dir = project.char_dir(a.name)
     sorted_dir = char_dir / "sorted"
     if not sorted_dir.exists():
@@ -196,13 +269,10 @@ def run_reject(project, a):
         negatives.clear(char_dir)
         return
     for name in a.images:
-        hits = list(sorted_dir.rglob(Path(name).stem + ".png"))
-        if not hits:
-            raise SystemExit(f"not found in {sorted_dir}: {name}")
-        if not negatives.reject(char_dir, hits[0].stem):
+        src = built_image(char_dir, name)
+        if positives.reject_image(char_dir, src) is None:
             raise SystemExit("this character was built by an older version - build it again once (--overwrite)")
-        negatives.trash(char_dir, hits[0])
-        print(f"[reject] {hits[0].name}: removed and learned as another character")
+        print(f"[reject] {src.name}: removed and learned as another character")
     names, _ = negatives.load(char_dir)
     alike = negatives.look_alikes(char_dir, [f.stem for f in sorted_dir.rglob("*.png")])
     print(f"[reject] {len(names)} rejected images; {len(alike)} remaining images look like them"
@@ -213,7 +283,7 @@ def run_reject(project, a):
 
 
 def run_tags(project, a):
-    from .tags import edit_tags, tag_counts, undo_last
+    from .tags import tag_counts, undo_last
     char_dir = project.char_dir(a.name)
     if not (char_dir / "sorted").exists():
         raise SystemExit(f"no built images for '{a.name}'")
@@ -226,9 +296,8 @@ def run_tags(project, a):
             replace = dict(r.split("=", 1) for r in a.replace)
         except ValueError:
             raise SystemExit('--replace expects OLD=NEW, e.g. "yellow eyes=brown eyes"')
-        print(f"[tags] changed {edit_tags(char_dir, a.remove, replace, a.add)} captions")
-        from .outfits import sync_tokens
-        sync_tokens(project, a.name, a.remove, replace)
+        from .outfits import edit_captions
+        print(f"[tags] changed {edit_captions(project, a.name, a.remove, replace, a.add)} captions")
     else:
         cnt, n = tag_counts(char_dir)
         print(f"[tags] {n} captions, {len(cnt)} distinct tags")

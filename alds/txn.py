@@ -1,5 +1,6 @@
 import shutil
 import time
+import uuid
 from pathlib import Path
 
 from .common import Project
@@ -7,7 +8,7 @@ from .common import Project
 
 def _remove(p: Path):
     if p.is_dir() and not p.is_symlink():
-        shutil.rmtree(p, ignore_errors=True)
+        shutil.rmtree(p)
     elif p.exists():
         p.unlink()
 
@@ -18,20 +19,31 @@ class Transaction:
         self.base = Path(base)
         self.keep, self.replace = as_paths(keep), as_paths(replace)
         self.new_in, self.remove_if_new = as_paths(new_in), as_paths(remove_if_new)
-        self.backup = self.base / f".undo_{time.time_ns()}"
+        self.backup = self.base / f".undo_{time.time_ns()}_{uuid.uuid4().hex[:8]}"
+        self.rolled_back = False
 
     def __enter__(self):
         self.fresh = [p for p in self.remove_if_new if not p.exists()]
         self.listing = {d: ({x.name for x in d.iterdir()} if d.exists() else set()) for d in self.new_in}
         self.backup.mkdir(parents=True)
-        for i, p in enumerate(self.keep):
-            if p.is_dir():
-                shutil.copytree(p, self.backup / f"k{i}")
-            elif p.exists():
-                shutil.copy2(p, self.backup / f"k{i}")
-        for i, p in enumerate(self.replace):
-            if p.exists():
-                shutil.move(str(p), str(self.backup / f"r{i}"))
+        moved = []
+        try:
+            for i, p in enumerate(self.keep):
+                if p.is_dir():
+                    shutil.copytree(p, self.backup / f"k{i}")
+                elif p.exists():
+                    shutil.copy2(p, self.backup / f"k{i}")
+            for i, p in enumerate(self.replace):
+                if p.exists():
+                    dest = self.backup / f"r{i}"
+                    shutil.move(str(p), str(dest))
+                    moved.append((p, dest))
+        except BaseException:
+            for p, dest in reversed(moved):
+                shutil.move(str(dest), str(p))
+            _remove(self.backup)
+            self.rolled_back = True
+            raise
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -59,6 +71,7 @@ class Transaction:
                 elif p.exists() and not any(p == f or f in p.parents for f in self.fresh):
                     _remove(p)
         _remove(self.backup)
+        self.rolled_back = True
         print("[undo] stopped - everything this command generated was removed")
 
 
@@ -79,12 +92,12 @@ def clusters_txn(project: Project):
 
 
 def build_txn(project: Project, name: str, ref_dir=None):
-    c = project.char_dir(name)
-    return Transaction(project.dir,
-                       replace=[c / "sorted", c / "_deleted", c / "_dropped", c / "_caption_history",
-                                c / "build.json", c / "emb.npz", c / "ccip.npz", c / "report.txt"]
-                       + ([Path(ref_dir)] if ref_dir else []),
-                       remove_if_new=[c])
+    from .versions import rebuilding
+    return rebuilding(project, name, ref_dir)
+
+
+def preview_txn(project: Project, name: str):
+    return Transaction(project.dir, replace=[project.preview_dir(name)])
 
 
 def export_txn(project: Project, name: str, out_dir: Path, config_dir=None):

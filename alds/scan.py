@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 
+from .cache import file_hash
 from .cancel import check as check_cancel
 from .common import VIDEO_EXTS, box_area, frame_in_use, inside_ratio
 from .extract import extract_frames, save_frame
@@ -191,6 +192,7 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
         F = np.concatenate([F, newF])
         proj["videos"].append({"id": vid, "path": str(vp), "name": vp.stem, **info,
                                "kept_frames": len(fr), "saved_frames": n_saved, "skip": skip_ranges})
+        proj["videos"][-1]["source_sha256"] = file_hash(vp)
         project.save("scan/frames.json", frames)
         project.save("scan/detections.json", dets)
         np.save(project.path("scan/ccip.npy"), F)

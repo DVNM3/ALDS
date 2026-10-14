@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .tags import split_tags
+from .tags import edit_tags, split_tags
 
 GARMENTS = {
     "shirt", "jacket", "coat", "vest", "dress", "uniform", "kimono", "yukata", "armor", "armour", "swimsuit",
@@ -34,6 +34,20 @@ def garment_nouns(tags):
 
 def _token_re(trigger):
     return re.compile(rf"^{re.escape(trigger)}_outfit\d+$")
+
+
+def token_matcher(build, name):
+    pattern = _token_re(build.get("name", name))
+    named = {o["token"] for o in build.get("outfits", [])}
+    return lambda tag: bool(pattern.match(tag)) or tag in named
+
+
+def edit_captions(project, char, remove=(), replace=None, add=()):
+    char_dir = project.char_dir(char)
+    is_token = token_matcher(project.load(f"characters/{char_dir.name}/build.json", {}), char)
+    changed = edit_tags(char_dir, remove, replace, add, is_token)
+    sync_tokens(project, char, remove, replace)
+    return changed
 
 
 def sync_tokens(project, char, remove=(), replace=None):
@@ -83,9 +97,7 @@ def run_outfits(project, name):
     if not build:
         raise SystemExit(f"no build for '{name}' - run build first")
     name = build.get("name", name)
-    pattern = _token_re(name)
-    renamed = {o["token"] for o in build.get("outfits", [])}
-    token_re = re.compile("|".join([pattern.pattern] + [rf"^{re.escape(t)}$" for t in renamed]))
+    is_token = token_matcher(build, name)
     files = {p.stem: p for p in (char_dir / "sorted").rglob("*.png")}
     frames = project.load("scan/frames.json", [])
     shot_of = {(f["vid"], f["t"]): f["shot"] for f in frames}
@@ -99,7 +111,7 @@ def run_outfits(project, name):
         p = files.get(Path(it["file"]).stem)
         if p is None or not p.with_suffix(".txt").exists():
             continue
-        tags = [t for t in split_tags(p.with_suffix(".txt").read_text(encoding="utf-8")) if not token_re.match(t)]
+        tags = [t for t in split_tags(p.with_suffix(".txt").read_text(encoding="utf-8")) if not is_token(t)]
         rows.append((it, p, tags))
 
     body = [r for r in rows if r[0]["type"] != "head" and r[1].stem in emb]

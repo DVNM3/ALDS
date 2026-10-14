@@ -213,4 +213,4 @@ def _flag_frames(project, in_skip):
 def _report_gone(n_gone):
     if n_gone:
         print(f"[autoskip] {n_gone} frames are used again but their files were deleted by `clean` - "
-              "they stay unused (scan the episodes again in a new project to get them back)")
+              "they stay unused until you run restore-frames")

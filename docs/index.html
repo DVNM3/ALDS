@@ -231,8 +231,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
         </div>
         <div class="card">
           <h3 class="en">Learns from your review</h3><h3 class="ar">يتعلم من مراجعتك</h3>
-          <p class="en">Reject an image as another character, and every image like it is flagged and left out of later builds.</p>
-          <p class="ar">ارفض صورة كشخصية أخرى، فتُعلَّم كل صورة تشبهها وتُستبعد من كل بناء لاحق.</p>
+          <p class="en">Confirm clear examples as identity references or reject another character. Review ambiguous matches first, preview the effect before rebuilding, and remove a mistaken confirmation at any time.</p>
+          <p class="ar">أكّد الصور الواضحة كمراجع للهوية أو ارفض شخصية أخرى. راجع المطابقات الملتبسة أولًا، وعاين الأثر قبل إعادة البناء، وألغِ أي تأكيد خاطئ لاحقًا.</p>
         </div>
         <div class="card">
           <h3 class="en">Anime upscaler</h3><h3 class="ar">تكبير بنموذج للأنمي</h3>
@@ -534,7 +534,9 @@ alds.bat export -p myshow -n my_char --total 100</code></pre>
           <li><code>--min-size 512</code> rejects small crops. The default is 448, or 320 with <code>--upscale</code>.</li>
           <li><code>--upscale --upscale-to 768</code> upscales to your training resolution.</li>
           <li><code>--save-dropped</code> keeps the left-out images, to check the filters.</li>
-          <li><code>--overwrite</code> builds again and <b>clears</b> the <code>sorted</code> folder, and your review with it.</li>
+          <li><code>--overwrite</code> saves a version before rebuilding and carries matching review decisions forward. Use <code>versions</code> to compare or restore results.</li>
+          <li><code>--preview</code> checks the build settings on 12 sampled frames, with reasons for accepted and excluded crops.</li>
+          <li><code>restore-frames</code> recovers missing frames from the original episodes after cleaning.</li>
         </ul>
         <ul class="list ar">
           <li>يعرض <code>report.txt</code> توزيع درجات التطابق. إن دخلت شخصيات أخرى فاخفض <code>--threshold</code> (مثل 0.11)، وإن قلّت الصور فارفعه (مثل 0.15).</li>
@@ -542,7 +544,9 @@ alds.bat export -p myshow -n my_char --total 100</code></pre>
           <li><code>--min-size 512</code> يستبعد القصّات الصغيرة. الافتراضي 448، أو 320 مع <code>--upscale</code>.</li>
           <li><code>--upscale --upscale-to 768</code> يكبّر الصور إلى دقة التدريب.</li>
           <li><code>--save-dropped</code> يحفظ الصور المستبعدة لتتحقق من الفلاتر.</li>
-          <li><code>--overwrite</code> يعيد البناء <b>ويمسح</b> مجلد <code>sorted</code> ومراجعتك معه.</li>
+          <li><code>--overwrite</code> يحفظ نسخة قبل إعادة البناء وينقل مراجعات الصور المطابقة. استخدم <code>versions</code> للمقارنة أو استعادة النتائج.</li>
+          <li><code>--preview</code> يعاين إعدادات البناء على ١٢ إطارًا، مع أسباب قبول الصور واستبعادها.</li>
+          <li><code>restore-frames</code> يستعيد الإطارات المفقودة من الحلقات الأصلية بعد التنظيف.</li>
         </ul>
       </div>
       <div>

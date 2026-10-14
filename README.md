@@ -33,9 +33,12 @@ Making a character LoRA from an anime usually means hours of taking screenshots,
 - **Captions in Anima's style.** WD14 tags in Anima's order with your trigger word. Fixed features such as hair and eye colour are left to the trigger word.
 - **Sorted by shot and angle.** From close-up to full body, and front, three-quarter, side, back, from above and from below.
 - **Separates outfits.** When the character wears more than one outfit, each outfit gets its own tag.
-- **Learns from your review.** Reject an image as another character, and every image like it is flagged and left out of later builds.
+- **Learns from your review.** Confirm clear images of the character, or reject another character. Doubtful images come first, and you can see the effect before building again.
 - **Anime upscaler (optional).** Small crops are enlarged with a model made for anime instead of being thrown away.
 - **Fast rebuilds.** The analysis is saved, so trying other thresholds or options takes seconds instead of minutes.
+- **Saved versions.** Every rebuild keeps the previous result, which you can compare or bring back. Your review carries over to the new build: edited captions, moved and removed images, and bulk tag edits.
+- **Frames can be restored.** After cleaning, missing frames come back from the original episodes, without scanning again.
+- **Settings preview.** Try the settings on 12 frames first and see why each crop was kept or left out.
 - **Safe to stop.** Every long action can be stopped, and whatever it made is removed.
 - **Ready for AI Toolkit.** From the command line, export can balance the angles and write a job config with the step schedule worked out for your image count.
 
@@ -111,6 +114,9 @@ Review keys:
 
 - **Stop button:** every long action shows one while it runs. The action stops within seconds and the project is back exactly as it was. The same happens when an action fails, and with **Ctrl+C** on the command line.
 - Removed images aren't deleted for good: they move to a `_deleted` folder inside the character folder.
+- **Saved build versions** (Review tab): save, compare, restore or delete a version. Images that didn't change are stored only once.
+- **Preview these settings** (Pick the character): runs the filters on 12 frames spread over the episodes. Upscaling and outfit tags only run in the full build.
+- **Restore missing frames** (Disk space): leave the folder empty to use the episodes where they were, or give their new folder. Use the original files, not re-encoded copies.
 
 ## Where your files go
 Everything the program makes stays in the `projects` folder next to it, one folder per project:
@@ -124,6 +130,8 @@ projects\<project>\
     sorted\close_up\front\ ...   a PNG image + a .txt caption, sorted by shot and angle
     sorted\_review\ ...          doubtful images to check first
     report.txt                   statistics and the angle distribution
+    versions\<version>\          earlier results: images, captions and review
+  previews\<name>\               last settings preview (separate from the finished images)
 ```
 
 “Save the result” (or `export` on the command line) copies the reviewed images and captions into one flat folder: the dataset you point AI Toolkit at, with caption extension `txt`.
@@ -160,6 +168,8 @@ scan  →  pick the character's number  →  build  →  review  →  export
 | `tags` / `outfits` | Edit tags in bulk; separate the outfits again. |
 | `export` | Copy the reviewed images into one dataset folder, optionally balanced, with an AI Toolkit config. |
 | `clean` | Free disk space. |
+| `restore-frames` | Recover missing character frames from the original episodes. |
+| `versions` | List, save, compare, restore or delete a character's saved versions. |
 | `gui` | Open the interface. |
 
 `alds.bat <command> --help` lists every option of a command.
@@ -180,17 +190,40 @@ alds.bat build -p fairytail -n natsu_ft --cluster 2 --series "fairy tail"
 - `-n` is the trigger word, also the name of the character folder.
 - `--cluster 2 5` when the character is split over more than one cluster; `--ref folder` for 3 to 10 reference images instead of, or as well as, cluster numbers.
 - Building again with other settings only analyses what's new; `--fresh` redoes everything.
+- `--preview` tries the settings on 12 frames and leaves the built images alone; `--preview 24` for more (up to 60). The crops and the reason for each are written to `projects\<p>\previews\<name>\`.
+
+### versions
+```bat
+alds.bat versions -p fairytail -n natsu_ft --save
+alds.bat versions -p fairytail -n natsu_ft
+alds.bat versions -p fairytail -n natsu_ft --compare VERSION_ID
+alds.bat versions -p fairytail -n natsu_ft --restore VERSION_ID
+alds.bat versions -p fairytail -n natsu_ft --delete VERSION_ID
+```
+Take the ID from the list. Every rebuild saves the current result first, and so does restoring, so you can always go back. A version holds the images, captions, confirmations, rejections and reference images.
+
+When you rebuild, your review carries over to the images from the same episode, time and crop: edited captions, group moves and removed images. Bulk tag edits are applied to the new images too, and outfit tags follow the new outfit split. If the rebuild fails or is stopped, the previous result comes back.
 
 ### review
 In the interface, or by hand: open the `sorted` folder and delete every image that isn't the character, starting with `_review`. The `.txt` captions can be edited too.
 
+**Definitely this character** adds the image as an extra reference for the character. Pick clear images from different angles and outfits. They are listed under **Identity references and feedback preview**, where a wrong confirmation can be taken back.
+
+**🔎 Ambiguous identity** shows weak matches and images close to another character first. The number shown is a distance (lower is closer), not a percentage.
+
+**Preview confirmation and rejection effects** shows which frames your confirmations and rejections add or leave out, with up to 24 examples. It changes nothing; the counts are frames, before cropping and filtering.
+
 ```bat
 alds.bat reject -p fairytail -n natsu_ft v01_00616.0s_full.png
+alds.bat confirm -p fairytail -n natsu_ft v01_00616.0s_full.png
+alds.bat confirm -p fairytail -n natsu_ft --remove v01_00616.0s_full.png
+alds.bat feedback -p fairytail -n natsu_ft
 alds.bat tags -p fairytail -n natsu_ft --remove parody --replace "yellow eyes=brown eyes"
 alds.bat tags -p fairytail -n natsu_ft --undo
 alds.bat outfits -p fairytail -n natsu_ft
 ```
 - `reject` learns an image as another character and lists the ones that look like it; `--clear` forgets all rejections.
+- `confirm` without image names lists the confirmations; `--remove` takes one back. `feedback` prints the same comparison as the preview.
 - `tags` without options lists every tag and its count. Outfit tags can be renamed with a replace, such as `natsu_ft_outfit1=natsu_ft_coat`.
 - `outfits` separates the outfits again after images were removed; `--no-outfits` on `build` skips them.
 
@@ -221,8 +254,15 @@ alds.bat export -p fairytail -n natsu_ft --total 60 --aitk "E:\AI-Toolkit-Easy-I
 alds.bat clean -p fairytail
 alds.bat clean -p fairytail --all
 ```
-- **Without `--all`:** deletes the frames the program will never read again (inside the OP/ED or without characters), the thumbnails, and unused images in `cache`. Building and clustering keep working.
-- **With `--all`:** deletes every frame and the saved analysis. The finished images stay, but the project can't be built or clustered any more.
+- **Without `--all`:** deletes the frames the program will never read again (inside the OP/ED or without characters), the thumbnails, the settings previews and unused images in `cache`. Building and clustering keep working.
+- **With `--all`:** deletes every frame and the saved analysis. Finished images and versions stay; restore the frames before building or clustering again.
+
+### restore-frames
+```bat
+alds.bat restore-frames -p fairytail
+alds.bat restore-frames -p fairytail --videos-dir "D:\anime\moved-season"
+```
+Only the missing frames with a character are decoded, by their frame number and time; frames inside the OP/ED are skipped. The program checks the resolution, frame rate, duration and timing, and for scans made with this version the exact file too. If an episode is missing or different, nothing is changed.
 
 ## Tuning
 - `report.txt` shows how the match scores are spread. If other characters slip in, lower `--threshold` (e.g. 0.11); if there are too few images, raise it (e.g. 0.15).
@@ -230,7 +270,13 @@ alds.bat clean -p fairytail --all
 - `--min-size 512` rejects small crops. The default is 448 (the square root of the area), or 320 with `--upscale`.
 - `--upscale --upscale-to 768` upscales to your training resolution.
 - `--save-dropped` keeps the left-out images in `_dropped\<reason>\`, to check the filters.
-- `--overwrite` builds again and **clears** the `sorted` folder, and your review with it.
+- `--overwrite` saves a version, builds again and carries your review over.
+
+## Development checks
+```bat
+.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+The tests use temporary projects and generated videos, with stand-ins for the models: nothing is downloaded and your projects aren't touched.
 
 ## Built with
 - [imgutils](https://github.com/deepghs/imgutils) by deepghs: character detection, CCIP identity features, OCR, the CDC upscaler and the WD14 tagger interface.

@@ -13,9 +13,9 @@ from .angles import face_pose
 from .cache import CropCache, digest, link_or_copy
 from .cancel import check as check_cancel
 from .captions import FRAMING_TAGS, classify, find_core_tags, make_caption
-from .common import box_area, box_iou, expand_box, frame_in_use
+from .common import box_area, box_iou, expand_box, frame_in_use, save_json
 from .identity import ccip_cross, ccip_features
-from . import negatives
+from . import negatives, positives
 from .scan import load_state
 
 DEFAULT_THRESHOLD = 0.13
@@ -71,14 +71,14 @@ def most_central(feats, n, cache):
     return feats[order[:n]]
 
 
-def other_characters(project, cluster_ids, refs, dets, F, threshold, cache):
+def other_characters(project, cluster_ids, refs, dets, F, threshold, cache, confirmed=None):
     data = project.load("scan/clusters.json") or {"clusters": []}
     feats, used = [], []
     for c in data["clusters"]:
         if c["id"] in cluster_ids:
             continue
         fc = most_central(F[[dets[m]["feat"] for m in c["members"]]], 4 * OTHER_PER_CLUSTER, cache)
-        fc = fc[match_score(fc, refs) > threshold][:OTHER_PER_CLUSTER]
+        fc = fc[identity_score(fc, refs, confirmed) > threshold][:OTHER_PER_CLUSTER]
         if len(fc):
             feats.append(fc)
             used.append(c["id"])
@@ -90,11 +90,21 @@ def match_score(feats, refs):
     return np.sort(ccip_cross(feats, refs), axis=1)[:, :k].mean(1)
 
 
-def select(frames, dets, F, refs, threshold, relax, cache, negs=None):
+def identity_score(feats, refs, confirmed=None):
+    score = match_score(feats, refs)
+    if confirmed is not None and len(confirmed):
+        score = np.minimum(score, negatives.nearest(feats, confirmed))
+    return score
+
+
+def select(frames, dets, F, refs, threshold, relax, cache, negs=None, confirmed=None):
     elig = [d for d in dets if d["feat"] >= 0 and frame_in_use(frames[d["frame"]])]
     feats_of = lambda ids: F[[dets[i]["feat"] for i in ids]]
     ids = [d["id"] for d in elig]
     scores = cache.scores(digest(refs, F), ids, lambda ids: match_score(feats_of(ids), refs))
+    if confirmed is not None and len(confirmed):
+        scores = np.minimum(scores, cache.scores("pos:" + digest(confirmed, F), ids,
+                                                 lambda ids: negatives.nearest(feats_of(ids), confirmed)))
     rejected = set()
     if negs is not None:
         near = cache.scores("neg:" + digest(negs, F), ids, lambda ids: negatives.nearest(feats_of(ids), negs))
@@ -220,7 +230,7 @@ def check_overwrite(project, name, overwrite):
 
 def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, sim, series,
               keep_core, screencap, tagger, keep_text, keep_crowded, keep_offmodel, save_dropped, overwrite,
-              upscale_to=0, outfits=True, fresh=False, auto_reject=True, keep_mono=False):
+              upscale_to=0, outfits=True, fresh=False, auto_reject=True, keep_mono=False, preview_limit=0):
     from imgutils.detect import detect_halfbody
     from imgutils.ocr import ocr
     from imgutils.tagging import get_wd14_tags
@@ -230,23 +240,36 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
     frames, dets, F = load_state(project)
     if not dets:
         raise SystemExit("nothing scanned yet - run scan first")
-    out_dir = project.char_dir(name)
+    out_dir = project.preview_dir(name) if preview_limit else project.char_dir(name)
     sorted_dir = out_dir / "sorted"
-    check_overwrite(project, name, overwrite)
+    if not preview_limit:
+        check_overwrite(project, name, overwrite)
     if sorted_dir.exists():
         shutil.rmtree(sorted_dir)
         shutil.rmtree(out_dir / "_deleted", ignore_errors=True)
 
-    cache = CropCache(project, fresh)
+    cache = CropCache(project, fresh and not preview_limit)
+    preview_rows = []
+
+    def preview_image(img, fr, ctype, reason, score=None):
+        img = img.copy()
+        img.thumbnail((512, 512))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / f"v{fr['vid']:02d}_{fr['n']:06d}_{ctype}.jpg"
+        img.save(path, quality=90)
+        preview_rows.append({"file": str(path), "reason": reason, "score": score})
+
     try:
         threshold = threshold or DEFAULT_THRESHOLD
         refs = reference_features(project, cluster_ids, ref_dir, dets, F, cache)
-        neg_names, negs = negatives.load(out_dir)
-        others, other_ids = (other_characters(project, cluster_ids, refs, dets, F, threshold, cache)
+        confirmed_names, confirmed = positives.load(project.char_dir(name))
+        neg_names, negs = negatives.load(project.char_dir(name))
+        others, other_ids = (other_characters(project, cluster_ids, refs, dets, F, threshold, cache, confirmed)
                              if auto_reject else (None, []))
-        negs = [x for x in (negs, others) if x is not None]
-        negs = np.concatenate(negs) if negs else None
-        chosen, best_scores, n_rejected = select(frames, dets, F, refs, threshold, relax, cache, negs)
+        negs = negatives.combine(negs, others)
+        chosen, best_scores, n_rejected = select(frames, dets, F, refs, threshold, relax, cache, negs, confirmed)
+        if confirmed_names:
+            print(f"[build] {len(confirmed_names)} confirmed identity references")
         n_track = sum(1 for v in chosen.values() if v[2] == "track")
         print(f"[build] matched {len(chosen)} frames ({n_track} via shot tracking), threshold {threshold}")
         sources = ([f"{len(other_ids)} other clusters"] if other_ids else []) + (
@@ -256,8 +279,24 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
         if others_line:
             print("        " + others_line)
         print("        best score per frame: " + score_histogram(best_scores))
-        if not chosen:
+        if not chosen and not preview_limit:
             raise SystemExit("no matches - try a higher --threshold or other clusters/refs")
+
+        if preview_limit:
+            eligible = sorted({d["frame"] for d in dets if d["feat"] >= 0 and frame_in_use(frames[d["frame"]])})
+            indices = np.linspace(0, len(eligible) - 1, min(preview_limit, len(eligible)), dtype=int)
+            sampled = {eligible[i] for i in indices}
+            for fi in sorted(sampled - chosen.keys()):
+                check_cancel()
+                candidates = [d for d in dets if d["frame"] == fi and d["feat"] >= 0]
+                scores = identity_score(F[[d["feat"] for d in candidates]], refs, confirmed)
+                best = int(np.argmin(scores))
+                d, score = candidates[best], float(scores[best])
+                fr = frames[fi]
+                with Image.open(project.path(fr["file"])) as image:
+                    preview_image(image.convert("RGB").crop(d["box"]), fr, "full",
+                                  "identity threshold" if score > threshold else "looks like another character", score)
+            chosen = {fi: value for fi, value in chosen.items() if fi in sampled}
 
         dets_by_frame = defaultdict(list)
         for d in dets:
@@ -270,7 +309,9 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
 
         def drop(reason, crop, fr, ctype):
             dropped[reason] += 1
-            if save_dropped:
+            if preview_limit:
+                preview_image(crop(ctype), fr, ctype, reason)
+            elif save_dropped:
                 folder = dropped_dir / reason.replace(" ", "_").replace("/", "")
                 folder.mkdir(parents=True, exist_ok=True)
                 crop(ctype).save(folder / f"v{fr['vid']:02d}_{fr['t']:07.1f}s_{ctype}.jpg", quality=90)
@@ -288,8 +329,11 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
             fr = frames[fi]
             entry, computed = cache.entry(det, fr), cache.computed
             frame = functools.cache(lambda: Image.open(project.path(fr["file"])).convert("RGB"))
-            boxes = usable_crops(cache.get(entry, "boxes", lambda: crop_boxes(frame(), det, detect_halfbody)),
-                                 min_size)
+            all_boxes = cache.get(entry, "boxes", lambda: crop_boxes(frame(), det, detect_halfbody))
+            boxes = usable_crops(all_boxes, min_size)
+            if preview_limit:
+                for ctype in all_boxes.keys() - boxes.keys():
+                    preview_image(frame().crop(all_boxes[ctype]), fr, ctype, "too small or too narrow")
             crop = functools.cache(lambda t: frame().crop(boxes[t]))
             recs = {t: entry["crops"].setdefault(t, {}) for t in boxes}
             sub = [t for t in boxes if t != "full"]
@@ -301,7 +345,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
             if sub:
                 sub_feats = np.stack([recs[t]["ccip"] for t in sub])
                 near = negatives.nearest(sub_feats, negs) if negs is not None else [float("inf")] * len(sub)
-                for t, s, n in zip(sub, match_score(sub_feats, refs), near):
+                for t, s, n in zip(sub, identity_score(sub_feats, refs, confirmed), near):
                     if s > threshold:
                         drop("another character in crop", crop, fr, t)
                         del boxes[t]
@@ -340,6 +384,24 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
         dropped["near-duplicate"] = len(items) - len(keep)
         print(f"[build] {n_crops} crops -> {len(keep)} kept "
               f"(dropped: {', '.join(f'{v} {k}' for k, v in dropped.items() if v)})")
+
+        if preview_limit:
+            accepted = {(it["frame"], it["type"]) for it in keep}
+            for it in items:
+                check_cancel()
+                fr = frames[it["frame"]]
+                with Image.open(project.path(fr["file"])) as image:
+                    preview_image(image.convert("RGB").crop(it["box"]), fr, it["type"],
+                                  "accepted" if (it["frame"], it["type"]) in accepted else "near-duplicate",
+                                  it["score"])
+            result = {"frames": len(sampled), "accepted": len(keep), "items": preview_rows}
+            save_json(out_dir / "preview.json", result)
+            print(f"[preview] {len(sampled)} sampled frames; {len(keep)} accepted crops. "
+                  "Duplicates are checked within the sample; upscaling and outfits run on a full build.")
+            return result
+
+        if not keep:
+            raise SystemExit("no usable crops after filtering - preview the settings before rebuilding")
 
         if upscale_to:
             from imgutils.upscale import upscale_with_cdc
@@ -389,11 +451,17 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_size, s
         cache.save()
 
     np.savez_compressed(out_dir / "emb.npz", stems=np.array(stems), emb=np.stack(embs).astype(np.float16))
-    np.savez_compressed(out_dir / negatives.FEATS, stems=np.array(stems), feats=np.stack(ccips), refs=refs)
+    np.savez_compressed(out_dir / negatives.FEATS, stems=np.array(stems), feats=np.stack(ccips), refs=refs,
+                        others=others if others is not None else np.empty((0, refs.shape[1]), np.float32))
     project.save(f"characters/{out_dir.name}/build.json",
                  {"name": name, "series": series, "clusters": cluster_ids, "other_clusters": other_ids,
                   "ref_dir": str(ref_dir) if ref_dir else None,
-                  "threshold": threshold, "core_tags": sorted(core), "items": meta})
+                  "threshold": threshold, "core_tags": sorted(core), "items": meta,
+                  "settings": {"threshold": threshold, "relax": relax, "min_size": min_size, "sim": sim,
+                               "tagger": tagger, "upscale_to": upscale_to, "outfits": outfits,
+                               "auto_reject": auto_reject, "keep_mono": keep_mono, "keep_text": keep_text,
+                               "keep_crowded": keep_crowded, "keep_offmodel": keep_offmodel,
+                               "keep_core": keep_core, "screencap": screencap}})
     outfit_lines = []
     if outfits:
         from .outfits import run_outfits

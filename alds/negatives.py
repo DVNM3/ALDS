@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -6,76 +7,95 @@ FILE = "negatives.npz"
 FEATS = "ccip.npz"
 
 
-def load(char_dir: Path):
-    p = Path(char_dir) / FILE
+def load(char_dir: Path, file=FILE):
+    p = Path(char_dir) / file
     if not p.exists():
         return [], None
-    z = np.load(p)
-    return z["names"].tolist(), z["feats"]
+    with np.load(p) as z:
+        return z["names"].tolist(), z["feats"]
 
 
-def _save(char_dir: Path, names, feats):
-    p = Path(char_dir) / FILE
+def _save(char_dir: Path, names, feats, file=FILE):
+    p = Path(char_dir) / file
     if not names:
         p.unlink(missing_ok=True)
         return
     tmp = p.with_name(p.stem + ".tmp.npz")
-    np.savez(tmp, names=np.array(names), feats=np.asarray(feats, np.float32))
-    tmp.replace(p)
+    try:
+        np.savez(tmp, names=np.array(names), feats=np.asarray(feats, np.float32))
+        tmp.replace(p)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def build_features(char_dir: Path):
     p = Path(char_dir) / FEATS
     if not p.exists():
         return {}, None
-    z = np.load(p)
-    return dict(zip(z["stems"].tolist(), z["feats"])), z["refs"]
+    with np.load(p) as z:
+        return dict(zip(z["stems"].tolist(), z["feats"])), z["refs"]
 
 
-def add(char_dir: Path, name: str, feat):
-    names, feats = load(char_dir)
+def other_features(char_dir: Path):
+    p = Path(char_dir) / FEATS
+    if not p.exists():
+        return None
+    with np.load(p) as z:
+        return z["others"] if "others" in z else None
+
+
+def combine(*arrays):
+    arrays = [a for a in arrays if a is not None and len(a)]
+    return np.concatenate(arrays) if arrays else None
+
+
+def add(char_dir: Path, name: str, feat, file=FILE):
+    names, feats = load(char_dir, file)
     if name in names:
         return
     feats = feat[None] if feats is None else np.concatenate([feats, feat[None]])
-    _save(char_dir, names + [name], feats)
+    _save(char_dir, names + [name], feats, file)
 
 
-def remove(char_dir: Path, name: str):
-    names, feats = load(char_dir)
+def remove(char_dir: Path, name: str, file=FILE):
+    names, feats = load(char_dir, file)
     if name in names:
         i = names.index(name)
-        _save(char_dir, names[:i] + names[i + 1:], np.delete(feats, i, axis=0))
+        _save(char_dir, names[:i] + names[i + 1:], np.delete(feats, i, axis=0), file)
 
 
 def clear(char_dir: Path):
     _save(char_dir, [], None)
 
 
-def trash(char_dir: Path, png: Path) -> Path:
-    import shutil
-    dst = Path(char_dir) / "_deleted" / png.parent.relative_to(Path(char_dir) / "sorted") / png.name
-    dst.parent.mkdir(parents=True, exist_ok=True)
+def move_pair(png: Path, dst_dir: Path) -> Path:
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst = dst_dir / png.name
     shutil.move(str(png), str(dst))
-    if png.with_suffix(".txt").exists():
-        shutil.move(str(png.with_suffix(".txt")), str(dst.with_suffix(".txt")))
+    txt = png.with_suffix(".txt")
+    if txt.exists():
+        try:
+            shutil.move(str(txt), str(dst.with_suffix(".txt")))
+        except BaseException:
+            shutil.move(str(dst), str(png))
+            raise
     return dst
 
 
-def reject(char_dir: Path, name: str) -> bool:
-    feats, _ = build_features(char_dir)
-    if name not in feats:
-        return False
-    add(char_dir, name, feats[name])
-    return True
+def trash(char_dir: Path, png: Path) -> Path:
+    char_dir = Path(char_dir)
+    return move_pair(png, char_dir / "_deleted" / png.parent.relative_to(char_dir / "sorted"))
 
 
 def look_alikes(char_dir: Path, names=None):
+    from . import positives
     _, negs = load(char_dir)
     feats, refs = build_features(char_dir)
     names = [n for n in (feats if names is None else names) if n in feats]
     if negs is None or refs is None or not names:
         return {}
-    mask, margin = like_rejected(np.stack([feats[n] for n in names]), refs, negs)
+    _, confirmed = positives.load(char_dir)
+    mask, margin = like_rejected(np.stack([feats[n] for n in names]), refs, negs, confirmed)
     return {n: float(m) for n, m, hit in zip(names, margin, mask) if hit}
 
 
@@ -84,8 +104,8 @@ def nearest(feats, negs):
     return ccip_cross(np.asarray(feats, np.float32), negs).min(1)
 
 
-def like_rejected(feats, refs, negs):
-    from .build import match_score
-    pos = match_score(np.asarray(feats, np.float32), refs)
+def like_rejected(feats, refs, negs, confirmed=None):
+    from .build import identity_score
+    pos = identity_score(np.asarray(feats, np.float32), refs, confirmed)
     margin = pos - nearest(feats, negs)
     return margin > 0, margin

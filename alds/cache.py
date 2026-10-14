@@ -5,6 +5,8 @@ import shutil
 
 import numpy as np
 
+from .cancel import check as check_cancel
+
 VERSION = 1
 MAX_REF_SETS = 8
 PNG_LEVEL = 3
@@ -15,6 +17,19 @@ def digest(*arrays) -> str:
     for a in arrays:
         h.update(np.ascontiguousarray(a).tobytes())
     return h.hexdigest()
+
+
+def file_hash(path, algorithm="sha256"):
+    h = hashlib.new(algorithm)
+    with open(path, "rb") as stream:
+        while chunk := stream.read(8 * 1024 * 1024):
+            check_cancel()
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def unlinked(folder, pattern="*"):
+    return [f for f in folder.glob(pattern) if f.stat().st_nlink == 1] if folder.exists() else []
 
 
 class CropCache:
@@ -81,8 +96,7 @@ class CropCache:
 
 
 def unused_images(project):
-    d = project.dir / "cache" / "images"
-    return [f for f in d.glob("*.png") if f.stat().st_nlink == 1] if d.exists() else []
+    return unlinked(project.dir / "cache" / "images", "*.png")
 
 
 def link_or_copy(src, dst):

@@ -9,6 +9,27 @@ PROJECTS_DIR = ROOT / "projects"
 VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".avi", ".mov", ".m4v", ".ts"}
 
 
+def load_json(path, default=None):
+    path = Path(path)
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+
+
+def save_json(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(path)
+
+
+def plain_name(name) -> bool:
+    return bool(name) and Path(name).name == name and name not in (".", "..")
+
+
+def inside(path, folder) -> bool:
+    return Path(path).resolve().is_relative_to(Path(folder).resolve())
+
+
 def setup_runtime():
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
@@ -33,30 +54,27 @@ class Project:
         self.scan_dir = self.dir / "scan"
         self.clusters_dir = self.dir / "clusters"
         self.chars_dir = self.dir / "characters"
+        self.previews_dir = self.dir / "previews"
 
     def path(self, rel: str) -> Path:
         return self.dir / rel
 
     def load(self, rel: str, default=None):
-        p = self.dir / rel
-        if not p.exists():
-            return default
-        return json.loads(p.read_text(encoding="utf-8"))
+        return load_json(self.dir / rel, default)
 
     def save(self, rel: str, data):
-        p = self.dir / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(p.suffix + ".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(p)
+        save_json(self.dir / rel, data)
 
     def char_dir(self, name: str) -> Path:
         return self.chars_dir / safe_name(name)
 
+    def preview_dir(self, name: str) -> Path:
+        return self.previews_dir / safe_name(name)
+
     def require_frames(self):
         if self.load("project.json", {}).get("frames_deleted"):
-            raise SystemExit("frames of this project were deleted to save space - scan the episodes "
-                             "again in a new project to build or re-cluster")
+            raise SystemExit("frames of this project were deleted to save space - restore them first with "
+                             f"alds.bat restore-frames -p {self.name}")
 
 
 def frame_in_use(f) -> bool:

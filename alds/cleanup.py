@@ -4,6 +4,7 @@ from pathlib import Path
 from .cache import unused_images
 from .common import frame_in_use
 from .scan import load_state
+from .versions import prune_store
 
 
 def disk_usage(project):
@@ -29,7 +30,7 @@ def disk_usage(project):
     if project.chars_dir.exists():
         for c in sorted(p for p in project.chars_dir.iterdir() if p.is_dir()):
             rows.append((f"characters/{c.name}", size(c)))
-    return rows + [("cache", size(project.dir / "cache"))]
+    return rows + [("cache", size(project.dir / "cache")), ("previews", size(project.previews_dir))]
 
 
 def fmt_bytes(n: float) -> str:
@@ -63,10 +64,12 @@ def clean(project, mode="safe"):
                 removed_files += 1
         for f in unused_images(project):
             f.unlink()
+    shutil.rmtree(project.previews_dir, ignore_errors=True)
     if project.chars_dir.exists():
         sub = ("_thumbs", "_dropped") + (("_deleted",) if mode == "all" else ())
         for c in project.chars_dir.iterdir():
             for name in sub:
                 shutil.rmtree(c / name, ignore_errors=True)
+            prune_store(c / "versions")
     after = sum(b for _, b in disk_usage(project))
     print(f"[clean] {mode}: removed {removed_files} frames, freed {fmt_bytes(before - after)}")

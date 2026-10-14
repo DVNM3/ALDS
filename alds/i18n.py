@@ -26,6 +26,108 @@ def t(text: str, **values) -> str:
 
 
 AR = {
+    "Settings or identity feedback changed. Run the preview again to see the updated result.":
+        "تغيّرت الإعدادات أو مراجعة الهوية. شغّل المعاينة مجددًا لعرض النتيجة المحدّثة.",
+    "✅ Definitely this character": "✅ هذه الشخصية بالتأكيد",
+    "Identity references and feedback preview": "مراجع الهوية ومعاينة أثر المراجعة",
+    "Confirm clear examples, especially different angles and outfits. Ambiguous images appear first in All.":
+        "أكّد الصور الواضحة، خاصة الزوايا والملابس المختلفة. تظهر صور الهوية الملتبسة أولًا عند اختيار «الكل».",
+    "Confirmed references": "المراجع المؤكدة",
+    "↶ Remove this confirmation": "↶ إلغاء هذا التأكيد",
+    "🔎 Preview confirmation and rejection effects": "🔎 معاينة أثر التأكيد والرفض",
+    "Changed matches (when source frames are available)": "المطابقات المتغيرة (عند توفر الإطارات الأصلية)",
+    "Uses the last build's references and settings to compare identity matching without manual feedback "
+    "against all current confirmations and rejections. Counts are frames, before quality filters, "
+    "cropping and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.":
+        "تستخدم مراجع وإعدادات آخر بناء لمقارنة مطابقة الهوية دون مراجعة يدوية بنتيجتها مع جميع التأكيدات والرفض الحالية. "
+        "الأعداد للإطارات قبل فلاتر الجودة والقص وإزالة التكرار. تبقى الصور المحذوفة محذوفة. استعد الإطارات المفقودة قبل إعادة البناء.",
+    "Run the feedback preview after changing confirmations or rejections.": "شغّل معاينة الأثر بعد تغيير التأكيدات أو الرفض.",
+    "Matched frames: {before} → {after}. New: {added}; excluded: {removed}; different person: {switched}.":
+        "الإطارات المطابقة: {before} ← {after}. جديدة: {added}؛ مستبعدة: {removed}؛ تغيّر الشخص المختار: {switched}.",
+    "References: {confirmed} confirmed, {rejected} rejected. Showing up to 24 changed frames.":
+        "المراجع: {confirmed} مؤكدة و{rejected} مرفوضة. تُعرض تفاصيل ٢٤ إطارًا متغيرًا كحد أقصى.",
+    "Current identity distance: {score}. This is a distance, not a confidence percentage.":
+        "مسافة الهوية الحالية: {score}. هذا مقياس اختلاف، وليس نسبة ثقة.",
+    "✅ You confirmed this character.": "✅ أكّدتَ هوية هذه الشخصية.",
+    "🔎 Check identity: weak match or close to another character.": "🔎 راجع الهوية: المطابقة ضعيفة أو قريبة من شخصية أخرى.",
+    "Start with 🔎 ambiguous identities and ⚠ images to check. Confirm clear examples with "
+    "**Definitely this character**. **N** rejects another character; **Delete** removes a bad "
+    "image without learning its identity. **← →** to move, **Ctrl+Z** to undo removal. "
+    "Manage confirmations and preview their effect in **Identity references and feedback preview**.":
+        "ابدأ بالهويات الملتبسة 🔎 والصور المعلّمة للمراجعة ⚠. أكّد الصور الواضحة بزر **هذه الشخصية بالتأكيد**. "
+        "**N** لرفض شخصية أخرى، و**Delete** لحذف صورة سيئة دون تعلم هويتها. **← →** للتنقل، و**Ctrl+Z** للتراجع عن الحذف. "
+        "أدر التأكيدات وعاين أثرها من **مراجع الهوية ومعاينة أثر المراجعة**.",
+    "Margin to another character: {margin} (larger is clearer).": "الفارق عن شخصية أخرى: {margin} (الأكبر أوضح).",
+    " — confirmed references: {n}": " — المراجع المؤكدة: {n}",
+    "🔎 Ambiguous identity ({n})": "🔎 هوية ملتبسة ({n})",
+    "✅ Confirmed identity ({n})": "✅ هوية مؤكدة ({n})",
+    "Saved as an identity reference. Preview the effect before rebuilding.": "حُفظت الصورة كمرجع للهوية. عاين الأثر قبل إعادة البناء.",
+    "Build this character once to save its identity features.": "أعد بناء هذه الشخصية مرة واحدة لحفظ خصائص هويتها.",
+    "Scan the episodes before previewing identity feedback.": "افحص الحلقات قبل معاينة أثر مراجعة الهوية.",
+    "Pick a confirmed reference.": "اختر مرجعًا مؤكدًا.",
+    "Change": "التغيّر",
+    "Time": "الوقت",
+    "Before distance": "المسافة قبل",
+    "After distance": "المسافة بعد",
+    "Before": "قبل",
+    "After": "بعد",
+    "new match": "مطابقة جديدة",
+    "no longer matched": "لم يعد مطابقًا",
+    "different person": "تغيّر الشخص المختار",
+    "There are results with this name already. Enable rebuilding to save a version and build again, or pick another name.":
+        "توجد نتائج سابقة بهذا الاسم. فعّل إعادة البناء لحفظ نسخة والبناء مجددًا، أو اختر اسمًا آخر.",
+    "Restore this project's frames in tab 1 before building again.": "استعد إطارات المشروع من التبويب ١ قبل إعادة البناء.",
+    "Build previews": "معاينات البناء",
+    " — restore frames before building again": " — استعد الإطارات قبل إعادة البناء",
+    "Confirm deleting the frames. The original episodes are needed to restore them.":
+        "أكّد حذف الإطارات. ستحتاج الحلقات الأصلية لاستعادتها.",
+    "**Delete all frames** keeps your finished images and saved versions. Restore the frames from the original episodes before building again.":
+        "**حذف جميع الإطارات** يحتفظ بالصور النهائية والنسخ المحفوظة. استعد الإطارات من الحلقات الأصلية قبل إعادة البناء.",
+    "Delete extracted frames; keep finished images and versions": "احذف الإطارات المستخرجة واحتفظ بالصور النهائية والنسخ",
+    "**Restore frames:** recover missing frames using the original episodes. Character groups and reviewed images stay as they are.":
+        "**استعادة الإطارات:** استرجع الإطارات المفقودة من الحلقات الأصلية. تبقى مجموعات الشخصيات والصور المراجعة كما هي.",
+    "Episodes folder if moved (optional)": "مجلد الحلقات إن نُقلت (اختياري)",
+    "↶ Restore missing frames": "↶ استعد الإطارات المفقودة",
+    "Rebuild this character: save a version and keep matching reviews": "أعد بناء الشخصية مع حفظ نسخة ونقل مراجعات الصور المطابقة",
+    "🔎 Preview these settings": "🔎 عاين هذه الإعدادات",
+    "Settings preview": "معاينة الإعدادات",
+    "Preview 12 frames before building. Your finished images stay as they are.":
+        "عاين ١٢ إطارًا قبل البناء. تبقى صورك النهائية كما هي.",
+    "Accepted and excluded crops": "الصور المقبولة والمستبعدة",
+    "Settings changed. Run the preview again to see the updated result.": "تغيّرت الإعدادات. شغّل المعاينة مجددًا لرؤية النتيجة المحدّثة.",
+    "{frames} sampled frames · {accepted} accepted crops. Duplicates are checked within this sample. Upscaling and outfit tags are applied in the full build.":
+        "عينة من {frames} إطارًا · {accepted} صورة مقبولة. تُقارن الصور المكررة داخل العينة. التكبير ووسوم الأزياء يُطبّقان عند البناء الكامل.",
+    "Saved build versions": "نسخ البناء المحفوظة",
+    "A version is saved before every rebuild. Restoring also saves the current result. Versions stay inside this project; images that didn't change are stored only once.":
+        "تُحفظ نسخة قبل كل إعادة بناء، وقبل استعادة نسخة أيضًا. تبقى النسخ داخل المشروع، والصور التي لم تتغير تُخزَّن مرة واحدة فقط.",
+    "Saved version": "النسخة المحفوظة",
+    "💾 Save current version": "💾 احفظ النسخة الحالية",
+    "↶ Restore selected version": "↶ استعد النسخة المختارة",
+    "No saved version selected.": "لم تُختر نسخة محفوظة.",
+    "Delete the selected version for good": "احذف النسخة المختارة نهائيًا",
+    "🗑 Delete version": "🗑 احذف النسخة",
+    "Tick the confirmation first: a deleted version can't be restored.":
+        "فعّل خانة التأكيد أولًا: النسخة المحذوفة لا يمكن استعادتها.",
+    "Deleted version {id}.": "حُذفت النسخة {id}.",
+    "This character is being rebuilt, restored or saved. Try again when it finishes.":
+        "يجري الآن بناء هذه الشخصية أو استعادتها أو حفظها. حاول مجددًا عندما ينتهي.",
+    "{date} · {n} images · {reason}": "{date} · {n} صورة · {reason}",
+    "manual": "حفظ يدوي",
+    "before rebuild": "قبل إعادة البناء",
+    "before restore": "قبل الاستعادة",
+    "Saved: {saved} images · Current: {current}\n\nCurrent result: {added} added, {removed} removed, {captions} captions changed, {moved} moved to another group.":
+        "المحفوظة: {saved} صورة · الحالية: {current}\n\nفي النتيجة الحالية: {added} مضافة، {removed} محذوفة، {captions} أوصاف معدّلة، {moved} منقولة لمجموعة أخرى.",
+    "Changed build settings (saved → current):": "إعدادات البناء المتغيّرة (المحفوظة ← الحالية):",
+    "accepted": "مقبولة",
+    "identity threshold": "خارج حد تطابق الشخصية",
+    "looks like another character": "تشبه شخصية أخرى",
+    "too small or too narrow": "صغيرة أو ضيقة جدًا",
+    "another character in crop": "شخصية أخرى داخل القص",
+    "dark or faded": "مظلمة أو باهتة",
+    "text on screen": "كتابة على الصورة",
+    "chibi or blurry": "رسم تشيبي أو ضبابي",
+    "black and white or sepia": "أبيض وأسود أو سيبيا",
+    "near-duplicate": "شبه مكررة",
     "ALDS — LoRA datasets of a character from anime episodes": "ALDS — تجهيز صور LoRA لشخصية من حلقات الأنمي",
     "🟢 The graphics card is used (CUDA)": "🟢 كرت الشاشة يعمل (CUDA)",
     "🔴 Running on the CPU only (slow)": "🔴 يعمل على المعالج فقط (بطيء)",

@@ -12,6 +12,16 @@ def save_frame(frame, path):
     frame.to_image().save(path, quality=95, subsampling=0)
 
 
+def stream_info(container, stream):
+    fps = float(stream.average_rate or stream.guessed_rate or 24)
+    duration = container.duration / av.time_base if container.duration else None
+    return fps, duration, stream.codec_context.width, stream.codec_context.height
+
+
+def frame_time(frame, n, fps):
+    return float(frame.time) if frame.time is not None else n / fps
+
+
 def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
                    min_gap=0.35, keep_diff=5.0, cut_diff=30.0, settle=2, flat_std=6.0, keep=save_frame):
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -19,11 +29,9 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
     with av.open(str(video_path)) as container:
         stream = container.streams.video[0]
         stream.thread_type = "AUTO"
-        fps = float(stream.average_rate or stream.guessed_rate or 24)
-        duration = container.duration / av.time_base if container.duration else None
+        fps, duration, width, height = stream_info(container, stream)
         total = stream.frames or (int(duration * fps) if duration else None)
-        info = {"fps": round(fps, 3), "duration": round(duration or 0, 1),
-                "width": stream.codec_context.width, "height": stream.codec_context.height}
+        info = {"fps": round(fps, 3), "duration": round(duration or 0, 1), "width": width, "height": height}
 
         fp = Fingerprinter()
         prev = last_kept = None
@@ -32,7 +40,7 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
         for n, frame in enumerate(tqdm(container.decode(stream), total=total, unit="f",
                                        desc="  decode", leave=False)):
             check_cancel()
-            t = float(frame.time) if frame.time is not None else n / fps
+            t = frame_time(frame, n, fps)
             thumb = frame.reformat(width=64, height=36, format="gray").to_ndarray().astype(np.float32)
             fp.add(t, thumb)
             if any(a <= t < b for a, b in skip):
