@@ -52,7 +52,7 @@ CSS = """
 html[dir="rtl"] .gradio-container, html[dir="rtl"] .gradio-container [dir="ltr"] { direction: rtl; }
 html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container .body-cell .text { text-align: right; }
 .gradio-container .body-cell .text, .gradio-container .caption-label { unicode-bidi: plaintext; }
-input[type=range] { direction: ltr; }
+.slider_input_container, input[type=range] { direction: ltr; }
 .ltr textarea, .ltr input { direction: ltr !important; text-align: left !important; }
 #log textarea { direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 12px; }
 #preview img { object-fit: contain; }
@@ -839,9 +839,8 @@ def other_language():
 def static_texts(demo):
     texts = {}
     for block in demo.blocks.values():
-        props = {}
-        if isinstance(getattr(block, "label", None), str) and block.label in AR:
-            props["label"] = block.label
+        props = {prop: getattr(block, prop) for prop in ("label", "info")
+                 if isinstance(getattr(block, prop, None), str) and getattr(block, prop) in AR}
         if isinstance(block, (gr.Button, gr.Markdown)) and isinstance(block.value, str) and block.value in AR:
             props["value"] = block.value
         if isinstance(block, gr.Dataframe):
@@ -894,14 +893,20 @@ def build_page(demo, gpu):
                     skip = gr.Textbox(label=t("More times to ignore (optional)"), elem_classes="ltr",
                                       placeholder="0:00-1:55, 21:55-24:30")
                     with gr.Accordion(t("Advanced settings"), open=False):
-                        auto_min = gr.Slider(15, 120, 40, step=5,
-                                             label=t("Shortest repeated part counted as OP/ED (seconds)"))
-                        autoskip_btn = gr.Button(t("Find the OP/ED again for the scanned episodes"))
+                        gr.Markdown(t("You rarely need these: the defaults suit most anime."))
+                        gr.Markdown(t("**Opening and ending (OP/ED)**"))
+                        auto_min = gr.Slider(15, 120, 40, step=5, label=t("Shortest OP/ED (seconds)"),
+                                             info=t("A part repeated between episodes is left out only if it's at "
+                                                    "least this long. Lower it if a short OP/ED isn't found."))
+                        autoskip_btn = gr.Button(t("Find the OP/ED again in the scanned episodes"))
                         stop_auto = gr.Button(stop_label(), variant="stop", visible=False)
-                        min_gap = gr.Slider(0.1, 2.0, 0.35, step=0.05,
-                                            label=t("Shortest gap between two kept frames (seconds)"))
-                        keep_diff = gr.Slider(1, 20, 5, step=0.5, label=t("How much a frame must change to be kept "
-                                                                          "again"))
+                        gr.Markdown(t("**Which frames are kept** (for new scans)"))
+                        min_gap = gr.Slider(0.1, 2.0, 0.35, step=0.05, label=t("Time between kept frames (seconds)"),
+                                            info=t("Lower = more frames from each scene. Higher = fewer frames and "
+                                                   "a faster scan."))
+                        keep_diff = gr.Slider(1, 20, 5, step=0.5, label=t("Change needed to keep another frame"),
+                                              info=t("How different a frame must look from the last kept one. "
+                                                     "Lower = more, more similar frames. Higher = fewer."))
                     scan_btn = gr.Button(t("▶ Start scanning"), variant="primary")
                     stop_scan = gr.Button(stop_label(), variant="stop", visible=False)
                 with gr.Column(scale=3):
@@ -910,12 +915,15 @@ def build_page(demo, gpu):
                                            column_widths=["5%", "31%", "13%", "13%", "38%"])
                     with gr.Accordion(t("💾 Disk space"), open=False):
                         usage = gr.Markdown()
-                        clean_safe_btn = gr.Button(t("🧹 Safe clean: delete frames the program doesn't need + "
-                                                     "thumbnails"))
-                        gr.Markdown(t("**Deleting all frames** saves more and keeps the finished images, but the "
-                                      "project can't be built or clustered again."))
-                        clean_confirm = gr.Checkbox(label=t("I understand this deletion is final"))
-                        clean_all_btn = gr.Button(t("Delete all frames"), variant="stop")
+                        gr.Markdown(t("**Safe clean** deletes only what the program will never use again: frames "
+                                      "with no character, frames inside the OP/ED, thumbnails and leftover copies. "
+                                      "Nothing you need is lost."))
+                        clean_safe_btn = gr.Button(t("🧹 Safe clean"))
+                        gr.Markdown(t("**Delete all frames** frees the most space and keeps your finished images, but "
+                                      "after it this project can't be built or re-clustered. Do it only when you're "
+                                      "done with the project."))
+                        clean_confirm = gr.Checkbox(label=t("I'm done with this project: delete all its frames"))
+                        clean_all_btn = gr.Button(t("🗑 Delete all frames"), variant="stop")
             scan_log = gr.Textbox(lines=12, label=t("Log"), elem_id="log", autoscroll=True)
 
         with gr.Tab(t("2. Pick the character"), id="pick"):
@@ -926,17 +934,23 @@ def build_page(demo, gpu):
                 with gr.Column(scale=3):
                     clusters_gal = gr.Gallery(label=t("Characters found"), columns=5, height=560,
                                               allow_preview=False, object_fit="contain", buttons=[])
-                    with gr.Accordion(t("Re-cluster (if two characters got mixed, or one got split)"), open=False):
-                        cut = gr.Slider(0.10, 0.40, 0.20, step=0.01,
-                                        label=t("Merge distance: lower = more, smaller clusters"))
-                        min_csize = gr.Slider(3, 40, 8, step=1, label=t("Hide clusters smaller than"))
-                        recluster_btn = gr.Button(t("Re-cluster the whole project"))
-                        gr.Markdown(t("**Or split one mixed cluster on its own:** select it (only that one), then "
-                                      "press “Split”. The other clusters keep their numbers; the new parts get "
-                                      "numbers at the end of the list."))
-                        split_cut = gr.Slider(0.06, 0.19, 0.14, step=0.01,
-                                              label=t("Split strength: lower = more parts"))
+                    with gr.Accordion(t("Fix the clusters (two characters mixed, or one split up)"), open=False):
+                        gr.Markdown(t("**One character in several clusters?** Usually there's nothing to fix: just "
+                                      "select all of them.\n\n**Two characters in one cluster?** Select only that "
+                                      "cluster, then split it:"))
+                        split_cut = gr.Slider(0.06, 0.19, 0.14, step=0.01, label=t("Split strength"),
+                                              info=t("Lower = more, smaller parts. The other clusters keep their "
+                                                     "numbers."))
                         split_btn = gr.Button(t("✂ Split the selected cluster"))
+                        gr.Markdown(t("**Many clusters wrong?** Cluster the whole project again (all the numbers "
+                                      "change):"))
+                        cut = gr.Slider(0.10, 0.40, 0.20, step=0.01, label=t("Cluster size"),
+                                        info=t("Lower = more, smaller clusters, which separates characters that look "
+                                               "alike. Higher = fewer, bigger clusters, which joins a character that "
+                                               "got split."))
+                        min_csize = gr.Slider(3, 40, 8, step=1, label=t("Hide clusters with fewer views than"),
+                                              info=t("Small clusters are usually background characters."))
+                        recluster_btn = gr.Button(t("Re-cluster the whole project"))
                         stop_clu = gr.Button(stop_label(), variant="stop", visible=False)
                         recluster_log = gr.Textbox(lines=6, label=t("Log"), elem_id="log")
                 with gr.Column(scale=2):
@@ -956,16 +970,23 @@ def build_page(demo, gpu):
                                            label=t("Enlarge every image smaller than this to it (pixels; use your "
                                                    "training resolution)"))
                     with gr.Accordion(t("Advanced settings"), open=False):
-                        threshold = gr.Slider(0.06, 0.25, 0.13, step=0.005,
-                                              label=t("Match threshold: lower = stricter and fewer images, higher = "
-                                                      "more images and more mistakes"))
-                        sim = gr.Slider(0.60, 0.98, 0.80, step=0.01,
-                                        label=t("Duplicate threshold: lower = more duplicates removed"))
-                        min_size = gr.Slider(256, 1024, 448, step=32, label=t("Smallest crop size (pixels)"))
-                        relax = gr.Slider(1.0, 2.0, 1.0, step=0.05,
-                                          label=t("Shot tracking (1 = off; may let wrong characters in)"))
+                        gr.Markdown(t("The defaults suit most anime. If the result isn't right, change one setting "
+                                      "and build again: rebuilding is fast."))
+                        threshold = gr.Slider(0.06, 0.25, 0.13, step=0.005, label=t("Match threshold"),
+                                              info=t("Lower = only clear matches, fewer images. Higher = more "
+                                                     "images, but other characters may slip in."))
+                        sim = gr.Slider(0.60, 0.98, 0.80, step=0.01, label=t("Duplicate removal"),
+                                        info=t("Lower = removes more look-alike images. Higher = keeps more "
+                                               "similar ones."))
+                        min_size = gr.Slider(256, 1024, 448, step=32, label=t("Smallest image size (pixels)"),
+                                             info=t("Smaller crops are left out. Turning on enlarging lowers it to "
+                                                    "320."))
+                        relax = gr.Slider(1.0, 2.0, 1.0, step=0.05, label=t("Follow the character within a shot"),
+                                          info=t("1 = off (recommended). Higher takes more frames from the same "
+                                                 "shot, but may let other characters in."))
                         tagger = gr.Dropdown(["EVA02_Large", "SwinV2_v3", "ConvNext_v3", "ViT_v3"],
-                                             value="EVA02_Large", label=t("Tagging model"))
+                                             value="EVA02_Large", label=t("Tagging model"),
+                                             info=t("EVA02_Large is the most accurate; the others are faster."))
                         opts = gr.CheckboxGroup(build_options(), value=["outfits", "screencap"], label=t("Options"))
                     overwrite = gr.Checkbox(label=t("Replace earlier results with the same name (clears your earlier "
                                                     "review)"))

@@ -69,10 +69,20 @@ AR = {
         "مع حلقة واحدة تُستخدم الحلقة المجاورة في المجلد للمقارنة",
     "More times to ignore (optional)": "أوقات إضافية تُتجاهل يدويًا (اختياري)",
     "Advanced settings": "إعدادات متقدمة",
-    "Shortest repeated part counted as OP/ED (seconds)": "أقل طول لمقطع متكرر حتى يُعدّ شارة (ثانية)",
-    "Find the OP/ED again for the scanned episodes": "أعد اكتشاف الشارة للحلقات الممسوحة",
-    "Shortest gap between two kept frames (seconds)": "أقل فاصل بين إطارين محفوظين (ثانية)",
-    "How much a frame must change to be kept again": "مقدار التغيّر المطلوب لحفظ إطار جديد",
+    "You rarely need these: the defaults suit most anime.": "نادرًا ما تحتاج هذه الإعدادات، فالقيم الافتراضية تناسب أغلب الأنمي.",
+    "**Opening and ending (OP/ED)**": "**الشارة (OP/ED)**",
+    "Shortest OP/ED (seconds)": "أقصر شارة (ثانية)",
+    "A part repeated between episodes is left out only if it's at least this long. Lower it if a short OP/ED isn't "
+    "found.":
+        "يُستبعد المقطع المتكرر بين الحلقات إن كان بهذا الطول أو أطول. اخفضه إن لم تُكتشف شارة قصيرة.",
+    "Find the OP/ED again in the scanned episodes": "أعد اكتشاف الشارة في الحلقات الممسوحة",
+    "**Which frames are kept** (for new scans)": "**الإطارات المحفوظة** (للمسح القادم)",
+    "Time between kept frames (seconds)": "الوقت بين الإطارات المحفوظة (ثانية)",
+    "Lower = more frames from each scene. Higher = fewer frames and a faster scan.":
+        "أقل = إطارات أكثر من كل مشهد. أعلى = إطارات أقل ومسح أسرع.",
+    "Change needed to keep another frame": "التغيّر المطلوب لحفظ إطار آخر",
+    "How different a frame must look from the last kept one. Lower = more, more similar frames. Higher = fewer.":
+        "كم يجب أن يختلف الإطار عن آخر إطار محفوظ. أقل = إطارات أكثر ومتشابهة أكثر. أعلى = إطارات أقل.",
     "▶ Start scanning": "▶ ابدأ المسح",
     "Episode": "الحلقة",
     "Length (min)": "المدة (دقيقة)",
@@ -80,13 +90,17 @@ AR = {
     "Left out automatically": "مستبعد تلقائيًا",
     "Episodes scanned in this project": "الحلقات الممسوحة في المشروع",
     "💾 Disk space": "💾 المساحة على القرص",
-    "🧹 Safe clean: delete frames the program doesn't need + thumbnails":
-        "🧹 تنظيف آمن: حذف الإطارات التي لا يحتاجها البرنامج + المصغّرات",
-    "**Deleting all frames** saves more and keeps the finished images, but the project can't be built or "
-    "clustered again.":
-        "**حذف كل الإطارات** يوفر أكثر، وتبقى الصور النهائية، لكن لا يمكن بعده البناء أو التجميع في هذا المشروع.",
-    "I understand this deletion is final": "أفهم أن هذا الحذف نهائي",
-    "Delete all frames": "حذف كل الإطارات",
+    "**Safe clean** deletes only what the program will never use again: frames with no character, frames inside the "
+    "OP/ED, thumbnails and leftover copies. Nothing you need is lost.":
+        "**التنظيف الآمن** يحذف فقط ما لن يستخدمه البرنامج أبدًا: الإطارات التي لا شخصيات فيها، وإطارات الشارة، "
+        "والصور المصغّرة، والنسخ الزائدة. لا يضيع شيء تحتاجه.",
+    "🧹 Safe clean": "🧹 تنظيف آمن",
+    "**Delete all frames** frees the most space and keeps your finished images, but after it this project can't be "
+    "built or re-clustered. Do it only when you're done with the project.":
+        "**حذف كل الإطارات** يوفّر أكبر مساحة وتبقى صورك النهائية، لكن بعده لا يمكن البناء أو إعادة التجميع في هذا "
+        "المشروع. افعله فقط بعد أن تنتهي من المشروع.",
+    "I'm done with this project: delete all its frames": "انتهيت من هذا المشروع: احذف كل إطاراته",
+    "🗑 Delete all frames": "🗑 حذف كل الإطارات",
     "Log": "السجل",
     "Enter at least one episode path or a folder of episodes": "أدخل مسار حلقة واحدة على الأقل أو مجلد حلقات",
     "The times to skip aren't valid. Example: 0:00-1:55, 21:55-24:30":
@@ -113,15 +127,23 @@ AR = {
         "(زي مختلف مثلًا) فاختر كل مجموعاتها. **الأرقام تتغير بعد كل مسح.**",
     "Characters found": "الشخصيات المكتشفة",
     "{id}  ·  {n} views": "{id}  ·  {n} ظهور",
-    "Re-cluster (if two characters got mixed, or one got split)": "إعادة التجميع (إن اختلطت شخصيتان أو انقسمت شخصية)",
-    "Merge distance: lower = more, smaller clusters": "مسافة الدمج: أقل = مجموعات أكثر وأصغر",
-    "Hide clusters smaller than": "إخفاء المجموعات الأصغر من",
+    "Fix the clusters (two characters mixed, or one split up)": "تصحيح المجموعات (شخصيتان مختلطتان، أو شخصية مقسّمة)",
+    "**One character in several clusters?** Usually there's nothing to fix: just select all of them.\n\n**Two "
+    "characters in one cluster?** Select only that cluster, then split it:":
+        "**شخصية في أكثر من مجموعة؟** غالبًا لا يلزم تصحيح شيء: اختر كل مجموعاتها فقط.\n\n"
+        "**شخصيتان في مجموعة واحدة؟** اختر تلك المجموعة وحدها، ثم قسّمها:",
+    "Split strength": "شدة التقسيم",
+    "Lower = more, smaller parts. The other clusters keep their numbers.":
+        "أقل = أجزاء أكثر وأصغر. بقية المجموعات تحتفظ بأرقامها.",
+    "**Many clusters wrong?** Cluster the whole project again (all the numbers change):":
+        "**مجموعات كثيرة خاطئة؟** أعد تجميع المشروع كله (تتغير كل الأرقام):",
+    "Cluster size": "حجم المجموعات",
+    "Lower = more, smaller clusters, which separates characters that look alike. Higher = fewer, bigger clusters, "
+    "which joins a character that got split.":
+        "أقل = مجموعات أكثر وأصغر، فتنفصل الشخصيات المتشابهة. أعلى = مجموعات أقل وأكبر، فتجتمع الشخصية المقسّمة.",
+    "Hide clusters with fewer views than": "إخفاء المجموعات التي ظهورها أقل من",
+    "Small clusters are usually background characters.": "المجموعات الصغيرة غالبًا لشخصيات ثانوية في الخلفية.",
     "Re-cluster the whole project": "أعد تجميع المشروع كله",
-    "**Or split one mixed cluster on its own:** select it (only that one), then press “Split”. The other "
-    "clusters keep their numbers; the new parts get numbers at the end of the list.":
-        "**أو قسّم مجموعة مختلطة وحدها:** حدّدها (واحدة فقط) ثم اضغط «قسّم». "
-        "أرقام بقية المجموعات لا تتغير، والأجزاء الجديدة تأخذ أرقامًا في آخر القائمة.",
-    "Split strength: lower = more parts": "شدة التقسيم: أقل = أجزاء أكثر",
     "✂ Split the selected cluster": "✂ قسّم المجموعة المحددة",
     "Selected clusters": "المجموعات المختارة",
     "Cluster preview": "معاينة المجموعة",
@@ -134,12 +156,24 @@ AR = {
         "تكبير الصور الصغيرة بنموذج مخصص للأنمي (CDC): خطوط أوضح من التكبير العادي، ويُنقذ القصّات الصغيرة",
     "Enlarge every image smaller than this to it (pixels; use your training resolution)":
         "كبّر كل صورة أصغر من هذا الحجم إليه (بكسل؛ اجعله بدقة التدريب)",
-    "Match threshold: lower = stricter and fewer images, higher = more images and more mistakes":
-        "حد التطابق: أقل = أدق وصور أقل، أعلى = صور أكثر وأخطاء أكثر",
-    "Duplicate threshold: lower = more duplicates removed": "حد التكرار: أقل = حذف تكرار أكثر",
-    "Smallest crop size (pixels)": "أقل حجم للقصة (بكسل)",
-    "Shot tracking (1 = off; may let wrong characters in)": "تتبع اللقطة (1 = متوقف؛ قد يُدخل شخصيات خاطئة)",
+    "The defaults suit most anime. If the result isn't right, change one setting and build again: rebuilding is "
+    "fast.":
+        "القيم الافتراضية تناسب أغلب الأنمي. إن لم تعجبك النتيجة فغيّر إعدادًا واحدًا وابنِ من جديد، فإعادة البناء "
+        "سريعة.",
+    "Match threshold": "حد التطابق",
+    "Lower = only clear matches, fewer images. Higher = more images, but other characters may slip in.":
+        "أقل = الصور المؤكدة فقط وعدد أقل. أعلى = صور أكثر، لكن قد تدخل شخصيات أخرى.",
+    "Duplicate removal": "إزالة التكرار",
+    "Lower = removes more look-alike images. Higher = keeps more similar ones.":
+        "أقل = يحذف صورًا متشابهة أكثر. أعلى = يُبقي صورًا متشابهة أكثر.",
+    "Smallest image size (pixels)": "أصغر حجم للصورة (بكسل)",
+    "Smaller crops are left out. Turning on enlarging lowers it to 320.":
+        "القصّات الأصغر تُستبعد. تفعيل التكبير يخفضه إلى 320.",
+    "Follow the character within a shot": "تتبّع الشخصية داخل اللقطة",
+    "1 = off (recommended). Higher takes more frames from the same shot, but may let other characters in.":
+        "1 = متوقف (يُنصح به). أعلى = إطارات أكثر من اللقطة نفسها، لكن قد تدخل شخصيات أخرى.",
     "Tagging model": "نموذج الوسوم",
+    "EVA02_Large is the most accurate; the others are faster.": "EVA02_Large الأدق، والبقية أسرع.",
     "Options": "خيارات",
     "Separate outfits automatically (a tag per outfit after the trigger word)":
         "فصل الأزياء تلقائيًا (وسم لكل زي بعد كلمة التفعيل)",
