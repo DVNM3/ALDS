@@ -26,56 +26,57 @@ def t(text: str, **values) -> str:
 
 
 AR = {
-    "Settings or identity feedback changed. Run the preview again to see the updated result.":
-        "تغيّرت الإعدادات أو مراجعة الهوية. شغّل المعاينة مجددًا لعرض النتيجة المحدّثة.",
+    "Settings or your review changed. Run the preview again to see the new result.":
+        "تغيّرت الإعدادات أو مراجعتك. شغّل المعاينة مجددًا لترى النتيجة الجديدة.",
     "✅ Definitely this character": "✅ هذه الشخصية بالتأكيد",
-    "✅ Identity references and feedback preview": "✅ مراجع الهوية ومعاينة أثر المراجعة",
-    "Confirm clear examples, especially different angles and outfits. Ambiguous images appear first in All.":
-        "أكّد الصور الواضحة، خاصة الزوايا والملابس المختلفة. تظهر صور الهوية الملتبسة أولًا عند اختيار «الكل».",
-    "Confirmed references": "المراجع المؤكدة",
+    "✅ Confirmed images and the effect of your review": "✅ الصور المؤكدة وأثر مراجعتك",
+    "Confirm clear images from different angles and in different outfits. Images marked ❓ come first under “All”.":
+        "أكّد صورًا واضحة من زوايا مختلفة وبأزياء مختلفة. الصور المعلّمة ❓ تظهر أولًا في «الكل».",
+    "Confirmed images": "الصور المؤكدة",
     "↶ Remove this confirmation": "↶ إلغاء هذا التأكيد",
-    "🔎 Preview confirmation and rejection effects": "🔎 معاينة أثر التأكيد والرفض",
-    "Changed matches (when source frames are available)": "المطابقات المتغيرة (عند توفر الإطارات الأصلية)",
-    "Uses the last build's references and settings to compare identity matching without manual feedback "
-    "against all current confirmations and rejections. Counts are frames, before the scene and "
-    "quality filters and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.":
-        "تستخدم مراجع وإعدادات آخر بناء لمقارنة مطابقة الهوية دون مراجعة يدوية بنتيجتها مع جميع التأكيدات والرفض الحالية. "
-        "الأعداد للإطارات قبل فلاتر المشاهد والجودة وإزالة التكرار. تبقى الصور المحذوفة محذوفة. استعد الإطارات المفقودة قبل إعادة البناء.",
-    "Run the feedback preview after changing confirmations or rejections.": "شغّل معاينة الأثر بعد تغيير التأكيدات أو الرفض.",
+    "🔎 Preview the effect": "🔎 عاين الأثر",
+    "Frames that change (when the frames are still on disk)": "الإطارات التي تتغير (إن كانت الإطارات ما زالت محفوظة)",
+    "See how your confirmations and rejections change the frames that match the character in the next build. Nothing "
+    "changes until you build again. The counts are frames, before the scene filters.":
+        "اعرف كيف تغيّر تأكيداتك ورفضك الإطاراتِ التي تطابق الشخصية في البناء القادم. لا يتغير شيء حتى تعيد البناء. "
+        "الأعداد للإطارات قبل فلاتر المشاهد.",
+    "Press “Preview the effect” after confirming or rejecting images.": "اضغط «عاين الأثر» بعد تأكيد صور أو رفضها.",
     "Matched frames: {before} → {after}. New: {added}; excluded: {removed}; different person: {switched}.":
         "الإطارات المطابقة: {before} ← {after}. جديدة: {added}؛ مستبعدة: {removed}؛ تغيّر الشخص المختار: {switched}.",
-    "References: {confirmed} confirmed, {rejected} rejected. Showing up to 24 changed frames.":
-        "المراجع: {confirmed} مؤكدة و{rejected} مرفوضة. تُعرض تفاصيل ٢٤ إطارًا متغيرًا كحد أقصى.",
-    "Current identity distance: {score}. This is a distance, not a confidence percentage.":
-        "مسافة الهوية الحالية: {score}. هذا مقياس اختلاف، وليس نسبة ثقة.",
+    "{confirmed} confirmed and {rejected} rejected images. Up to 24 changed frames are shown.":
+        "{confirmed} صورة مؤكدة و{rejected} مرفوضة. تُعرض حتى ٢٤ إطارًا متغيرًا.",
+    "Match score: {score} (lower = closer to the character).": "درجة التطابق: {score} (الأقل = أقرب إلى الشخصية).",
     "✅ You confirmed this character.": "✅ أكّدتَ هوية هذه الشخصية.",
-    "❓ Check identity: weak match or close to another character.": "❓ راجع الهوية: المطابقة ضعيفة أو قريبة من شخصية أخرى.",
-    "Start with ❓ ambiguous identities and ⚠ images to check. Confirm clear examples with "
-    "**Definitely this character**. **N** rejects another character; **Delete** removes a bad "
-    "image without learning its identity. **← →** to move, **Ctrl+Z** to undo removal. "
-    "Manage confirmations and preview their effect in **Identity references and feedback preview**.":
-        "ابدأ بالهويات الملتبسة ❓ والصور المعلّمة للمراجعة ⚠. أكّد الصور الواضحة بزر **هذه الشخصية بالتأكيد**. "
-        "**N** لرفض شخصية أخرى، و**Delete** لحذف صورة سيئة دون تعلم هويتها. **← →** للتنقل، و**Ctrl+Z** للتراجع عن الحذف. "
-        "أدر التأكيدات وعاين أثرها من **مراجع الهوية ومعاينة أثر المراجعة**.",
-    "Margin to another character: {margin} (larger is clearer).": "الفارق عن شخصية أخرى: {margin} (الأكبر أوضح).",
-    " — confirmed references: {n}": " — المراجع المؤكدة: {n}",
-    "❓ Ambiguous identity ({n})": "❓ هوية ملتبسة ({n})",
-    "✅ Confirmed identity ({n})": "✅ هوية مؤكدة ({n})",
-    "Saved as an identity reference. Preview the effect before rebuilding.": "حُفظت الصورة كمرجع للهوية. عاين الأثر قبل إعادة البناء.",
-    "Build this character once to save its identity features.": "أعد بناء هذه الشخصية مرة واحدة لحفظ خصائص هويتها.",
-    "Scan the episodes before previewing identity feedback.": "افحص الحلقات قبل معاينة أثر مراجعة الهوية.",
-    "Pick a confirmed reference.": "اختر مرجعًا مؤكدًا.",
+    "❓ Check who this is: a weak match, or close to another character.":
+        "❓ تحقق من هويتها: التطابق ضعيف، أو قريب من شخصية أخرى.",
+    "- Images marked ❓ (unsure who it is) and ⚠ (to check) come first: look at them before the rest.\n- **✅ "
+    "Definitely this character** confirms a clear image, and the program learns from it.\n- **🚫 N** removes another "
+    "character and learns to leave out what looks like it. **🗑 Delete** removes a bad image.\n- **← →** move between "
+    "images, **Ctrl+Z** undoes a removal.":
+        "- الصور المعلّمة ❓ (هوية غير مؤكدة) و⚠ (للمراجعة) تظهر أولًا: راجعها قبل غيرها.\n- **✅ هذه الشخصية "
+        "بالتأكيد** يؤكد صورة واضحة، فيتعلم منها البرنامج.\n- **🚫 N** يحذف صورة شخصية أخرى ويتعلم استبعاد ما يشبهها. "
+        "**🗑 Delete** يحذف صورة سيئة.\n- **← →** للتنقل بين الصور، و**Ctrl+Z** للتراجع عن الحذف.",
+    "Gap to the closest other character: {margin} (bigger = clearer).":
+        "الفارق عن أقرب شخصية أخرى: {margin} (الأكبر أوضح).",
+    " · {n} confirmed": " · {n} مؤكدة",
+    "❓ Unsure who it is ({n})": "❓ هوية غير مؤكدة ({n})",
+    "✅ Confirmed ({n})": "✅ مؤكدة ({n})",
+    "Confirmed. Preview the effect before you build again.": "تم التأكيد. عاين الأثر قبل أن تعيد البناء.",
+    "Build this character once to save its identity features.":
+        "أعد بناء هذه الشخصية مرة واحدة ليتعلم البرنامج من مراجعتك.",
+    "Scan the episodes before previewing identity feedback.": "افحص الحلقات قبل معاينة الأثر.",
+    "Pick a confirmed image.": "اختر صورة مؤكدة.",
     "Change": "التغيّر",
     "Time": "الوقت",
-    "Before distance": "المسافة قبل",
-    "After distance": "المسافة بعد",
+    "Score before": "الدرجة قبل",
+    "Score after": "الدرجة بعد",
     "Before": "قبل",
     "After": "بعد",
     "new match": "مطابقة جديدة",
     "no longer matched": "لم يعد مطابقًا",
     "different person": "تغيّر الشخص المختار",
-    "There are results with this name already. Enable rebuilding to save a version and build again, or pick another name.":
-        "توجد نتائج سابقة بهذا الاسم. فعّل إعادة البناء لحفظ نسخة والبناء مجددًا، أو اختر اسمًا آخر.",
+    "This character is already built. Tick “Build this character again”, or type another name.":
+        "هذه الشخصية مبنية من قبل. فعّل «أعد بناء الشخصية»، أو اكتب اسمًا آخر.",
     "Restore this project's frames in tab 1 before building again.": "استعد إطارات المشروع من التبويب ١ قبل إعادة البناء.",
     "Build previews": "معاينات البناء",
     " — restore frames before building again": " — استعد الإطارات قبل إعادة البناء",
@@ -88,14 +89,15 @@ AR = {
         "**استعادة الإطارات:** استرجع الإطارات المفقودة من الحلقات الأصلية. تبقى مجموعات الشخصيات والصور المراجعة كما هي.",
     "Episodes folder if moved (optional)": "مجلد الحلقات إن نُقلت (اختياري)",
     "↶ Restore missing frames": "↶ استعد الإطارات المفقودة",
-    "Rebuild this character: save a version and keep matching reviews": "أعد بناء الشخصية مع حفظ نسخة ونقل مراجعات الصور المطابقة",
+    "Build this character again (the current result is saved as a version, and your review carries over)":
+        "أعد بناء الشخصية (تُحفظ النتيجة الحالية كنسخة، وتنتقل مراجعتك)",
     "🔎 Preview these settings": "🔎 عاين هذه الإعدادات",
     "🔎 Settings preview": "🔎 معاينة الإعدادات",
     "Preview 12 frames before building. Your finished images stay as they are.":
         "عاين ١٢ إطارًا قبل البناء. تبقى صورك النهائية كما هي.",
     "Accepted and excluded scenes": "المشاهد المقبولة والمستبعدة",
     "{frames} sampled frames · {accepted} accepted scenes. Duplicates are checked within this sample. Upscaling and outfit tags are applied in the full build.":
-        "عينة من {frames} إطارًا · {accepted} مشهدًا مقبولًا. تُقارن المشاهد المكررة داخل العينة. التكبير ووسوم الأزياء يُطبّقان عند البناء الكامل.",
+        "عينة من {frames} إطار · {accepted} مشهد مقبول. تُقارن المشاهد المكررة داخل العينة فقط، والتكبير ووسوم الأزياء تُطبّق في البناء الكامل.",
     "🕘 Saved build versions": "🕘 نسخ البناء المحفوظة",
     "A version is saved before every rebuild. Restoring also saves the current result. Versions stay inside this project; images that didn't change are stored only once.":
         "تُحفظ نسخة قبل كل إعادة بناء، وقبل استعادة نسخة أيضًا. تبقى النسخ داخل المشروع، والصور التي لم تتغير تُخزَّن مرة واحدة فقط.",
@@ -118,7 +120,7 @@ AR = {
         "المحفوظة: {saved} صورة · الحالية: {current}\n\nفي النتيجة الحالية: {added} مضافة، {removed} محذوفة، {captions} أوصاف معدّلة، {moved} منقولة لمجموعة أخرى.",
     "Changed build settings (saved → current):": "إعدادات البناء المتغيّرة (المحفوظة ← الحالية):",
     "accepted": "مقبولة",
-    "identity threshold": "خارج حد تطابق الشخصية",
+    "identity threshold": "لا تطابق الشخصية",
     "looks like another character": "تشبه شخصية أخرى",
     "character too small in the scene": "الشخصية صغيرة جدًا في المشهد",
     "another character in the scene": "شخصية أخرى في المشهد",
@@ -146,15 +148,15 @@ AR = {
     "The character wasn't found. Raise “Match threshold” a little or pick other clusters":
         "لم يُعثر على الشخصية. ارفع «حد التطابق» قليلًا أو اختر مجموعات أخرى",
     "No characters were found in the episodes": "لم تُكتشف أي شخصيات في الحلقات",
-    "Scan at least one episode first (tab 1)": "امسح حلقة واحدة على الأقل أولًا (التبويب ١)",
+    "Scan at least one episode first (tab 1)": "افحص حلقة واحدة على الأقل أولًا (التبويب ١)",
     "That cluster number doesn't exist. Numbers change after every scan, refresh the page":
-        "رقم مجموعة غير موجود. الأرقام تتغير بعد كل مسح، حدّث الصفحة",
+        "رقم المجموعة غير موجود. الأرقام تتغير بعد كل فحص، حدّث الصفحة",
     "There are no images in the uploaded references": "لا توجد صور في المراجع المرفوعة",
     "Not enough clear views to cluster": "لا توجد مشاهد واضحة كافية للتجميع",
     "The cluster didn't split this strongly, lower “Split strength”": "لم تنقسم المجموعة بهذه الشدة، اخفض «شدة التقسيم»",
     "The cluster is too small to split": "المجموعة أصغر من أن تُقسم",
 
-    "1. Scan episodes": "١. مسح الحلقات",
+    "1. Scan episodes": "١. فحص الحلقات",
     "Paste one episode path per line, or the path of a whole folder. "
     "(In Windows Explorer: Shift + right-click the file → Copy as path)":
         "الصق مسار حلقة في كل سطر، أو مسار مجلد كامل. "
@@ -172,20 +174,20 @@ AR = {
     "A part repeated between episodes is left out only if it's at least this long. Lower it if a short OP/ED isn't "
     "found.":
         "يُستبعد المقطع المتكرر بين الحلقات إن كان بهذا الطول أو أطول. اخفضه إن لم تُكتشف شارة قصيرة.",
-    "🔁 Find the OP/ED again in the scanned episodes": "🔁 أعد اكتشاف الشارة في الحلقات الممسوحة",
-    "**Which frames are kept** (for new scans)": "**الإطارات المحفوظة** (للمسح القادم)",
+    "🔁 Find the OP/ED again in the scanned episodes": "🔁 أعد البحث عن الشارة في الحلقات المفحوصة",
+    "**Which frames are kept** (for new scans)": "**الإطارات التي تُحفظ** (للفحص القادم)",
     "Time between kept frames (seconds)": "الوقت بين الإطارات المحفوظة (ثانية)",
     "Lower = more frames from each scene. Higher = fewer frames and a faster scan.":
-        "أقل = إطارات أكثر من كل مشهد. أعلى = إطارات أقل ومسح أسرع.",
+        "أقل = إطارات أكثر من كل مشهد. أعلى = إطارات أقل وفحص أسرع.",
     "Change needed to keep another frame": "التغيّر المطلوب لحفظ إطار آخر",
     "How different a frame must look from the last kept one. Lower = more, more similar frames. Higher = fewer.":
         "كم يجب أن يختلف الإطار عن آخر إطار محفوظ. أقل = إطارات أكثر ومتشابهة أكثر. أعلى = إطارات أقل.",
-    "▶ Start scanning": "▶ ابدأ المسح",
+    "▶ Start scanning": "▶ ابدأ الفحص",
     "Episode": "الحلقة",
     "Length (min)": "المدة (دقيقة)",
     "Frames": "إطارات",
     "Left out automatically": "مستبعد تلقائيًا",
-    "Episodes scanned in this project": "الحلقات الممسوحة في المشروع",
+    "Episodes scanned in this project": "الحلقات المفحوصة في المشروع",
     "💽 Disk space": "💽 المساحة على القرص",
     "**Safe clean** deletes only what the program will never use again: frames with no character, frames inside the "
     "OP/ED, thumbnails and leftover copies. Nothing you need is lost.":
@@ -197,12 +199,12 @@ AR = {
     "Enter at least one episode path or a folder of episodes": "أدخل مسار حلقة واحدة على الأقل أو مجلد حلقات",
     "The times to skip aren't valid. Example: 0:00-1:55, 21:55-24:30":
         "صيغة أوقات التخطي غير صحيحة. مثال: 0:00-1:55, 21:55-24:30",
-    "Starting the scan...": "بدء المسح...",
-    "Scan at least one episode first": "امسح حلقة واحدة على الأقل أولًا",
+    "Starting the scan...": "بدء الفحص...",
+    "Scan at least one episode first": "افحص حلقة واحدة على الأقل أولًا",
     "Comparing the episodes...": "مقارنة الحلقات...",
     "Select exactly one cluster (the mixed one), then press “Split”": "حدّد مجموعة واحدة فقط (المختلطة) ثم اضغط «قسّم»",
     "Extracted frames": "الإطارات المستخرجة",
-    "Scan data": "بيانات المسح",
+    "Scan data": "بيانات الفحص",
     "Cluster images": "صور المجموعات",
     "Saved analysis for rebuilds": "التحليل المحفوظ لإعادة البناء",
     "Character {name}": "الشخصية {name}",
@@ -213,7 +215,7 @@ AR = {
     "Click a character's image to select it, click again to unselect. If the character shows up in more than one "
     "cluster (another outfit, say), pick all of them. **The numbers change after every scan.**":
         "اضغط على صورة الشخصية لتحديدها، واضغط مرة أخرى لإلغاء التحديد. إن ظهرت الشخصية في أكثر من مجموعة "
-        "(زي مختلف مثلًا) فاختر كل مجموعاتها. **الأرقام تتغير بعد كل مسح.**",
+        "(زي مختلف مثلًا) فاختر كل مجموعاتها. **الأرقام تتغير بعد كل فحص.**",
     "Characters found": "الشخصيات المكتشفة",
     "{id}  ·  {n} views": "{id}  ·  {n} ظهور",
     "🧩 Fix the clusters (two characters mixed, or one split up)": "🧩 تصحيح المجموعات (شخصيتان مختلطتان، أو شخصية مقسّمة)",
@@ -236,8 +238,8 @@ AR = {
     "✂ Split the selected cluster": "✂ قسّم المجموعة المحددة",
     "Selected clusters": "المجموعات المختارة",
     "Cluster preview": "معاينة المجموعة",
-    "Or/and: reference images of the character (optional, useful for side characters)":
-        "أو/و: صور مرجعية للشخصية (اختياري، مفيد للشخصيات الثانوية)",
+    "Reference images of the character (optional, with the clusters or instead of them; useful for side characters)":
+        "صور مرجعية للشخصية (اختياري، مع المجموعات أو بدلًا منها؛ تفيد للشخصيات الثانوية)",
     "Trigger word (the character's name)": "كلمة التفعيل (اسم الشخصية)",
     "Anime name as a tag (optional)": "اسم الأنمي كوسم (اختياري)",
     "Enlarge small scenes with an anime upscaler: cleaner lines than plain resizing":
@@ -339,13 +341,11 @@ AR = {
     "**{i} / {n}** — {shot} · {angle}": "**{i} / {n}** — {shot} · {angle}",
     " — ⚠ needs a check": " — ⚠ تحتاج تأكيدًا",
     " — 🚫 looks like an image you rejected as another character": " — 🚫 تشبه صورة رفضتها كشخصية أخرى",
-    "Image: {crop} — episode {ep} at {at} — match score {score} (lower is better) — sharpness {sharp}":
-        "الصورة: {crop} — الحلقة {ep} عند {at} — درجة التطابق {score} (الأقل أفضل) — الحدة {sharp}",
-    "Whole scene": "المشهد كاملًا",
-    " — upscaled ×{f}": " — مُكبّرة ×{f}",
+    "Episode {ep} at {at} · sharpness {sharp}": "الحلقة {ep} عند {at} · الحدة {sharp}",
+    " · enlarged ×{f}": " · مُكبّرة ×{f}",
     "Pick a character.": "اختر شخصية.",
-    "**{n}** images — **{r}** to check — deleted: {d}": "**{n}** صورة — منها **{r}** للمراجعة — المحذوفة: {d}",
-    " — rejected as another character: {n}": " — رُفضت كشخصية أخرى: {n}",
+    "**{n}** images · **{r}** to check · {d} deleted": "**{n}** صورة · **{r}** للمراجعة · {d} محذوفة",
+    " · {n} rejected as another character": " · {n} مرفوضة كشخصية أخرى",
     "← Previous": "→ السابق",
     "Next →": "التالي ←",
     "🚫 Not this character (N)": "🚫 ليست الشخصية (N)",
@@ -377,13 +377,13 @@ AR = {
     "Every tag the tagger found is in the captions. Pick what the LoRA is for to see the tags that matter for it, "
     "then move the ones the trigger word should learn into the trigger word. Below are all the tags and how often "
     "they appear: remove, replace or add tags in **all** captions at once. Every change can be undone.":
-        "كل وسم وجده الموسِّم موجود في الأوصاف. اختر غرض اللورا لتظهر الوسوم المهمة له، ثم انقل ما تريد أن "
+        "كل وسم وجده موديل الوسوم موجود في الأوصاف. اختر غرض اللورا لتظهر الوسوم المهمة له، ثم انقل ما تريد أن "
         "تتعلمه كلمة التفعيل إليها. وفي الأسفل كل الوسوم وعدد مرات ظهورها: احذف أو استبدل أو أضف وسومًا في "
         "**كل** الأوصاف دفعة واحدة. كل تعديل يمكن التراجع عنه.",
     "What is the LoRA for?": "ما غرض اللورا؟",
     "🧑 Character": "🧑 شخصية",
-    "🖌 Style": "🖌 ستايل",
-    "👕 Outfit": "👕 ملابس",
+    "🖌 Style": "🖌 أسلوب الرسم",
+    "👕 Outfit": "👕 الزي",
     "Tags for this goal (checked = in at least 20% of the images)":
         "وسوم هذا الغرض (المؤشَّر عليها = تظهر في 20% من الصور على الأقل)",
     "🔒 Move the checked into the trigger word": "🔒 انقل المؤشَّر عليها إلى كلمة التفعيل",
@@ -431,8 +431,8 @@ AR = {
         "**الأزياء:** بعد حذف صور في المراجعة أعد فصل الأزياء ليُحدَّث توزيعها.",
     "🧥 Separate the outfits again": "🧥 أعد فصل الأزياء",
     "Pick a built character.": "اختر شخصية مبنية.",
-    "**{n}** captions — **{k}** different tags — changes you can undo: {u}":
-        "**{n}** وصف — **{k}** وسم مختلف — تعديلات قابلة للتراجع: {u}",
+    "**{n}** captions · **{k}** different tags · {u} changes you can undo":
+        "**{n}** وصف · **{k}** وسم مختلف · {u} تعديل يمكن التراجع عنه",
     "Pick the character": "اختر الشخصية",
     "Changed {n} captions": "عُدّل {n} وصف",
     "Pick one or more tags in the table": "اختر وسمًا أو أكثر من الجدول",

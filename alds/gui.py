@@ -18,7 +18,8 @@ from PIL import Image
 
 from . import cancel, txn
 from .cancel import Cancelled
-from .common import DEFAULT_MIN_HEIGHT, PROJECTS_DIR, Project, inside, mmss, parse_ranges, release_models, safe_name
+from .common import (DEFAULT_MIN_HEIGHT, FRAMING, PROJECTS_DIR, VIEW, Project, inside, mmss, parse_ranges,
+                     release_models, safe_name)
 from .upscale import DEFAULT as DEFAULT_UPSCALER, LABELS as UPSCALERS
 from .i18n import AR, LANGS, lang, t, use
 
@@ -27,10 +28,7 @@ def ltr(text) -> str:
     return f"\u2066{text}\u2069"
 
 
-FRAMING = {"close_up": "Close-up", "upper_body": "Upper body", "cowboy_shot": "Cowboy shot", "full_body": "Full body"}
-VIEW = {"front": "Front", "three_quarter": "Three-quarter", "side": "Side", "back": "Back", "above": "From above",
-        "below": "From below"}
-CROP = {"scene": "Whole scene", "full": "Whole character", "half": "Upper body", "head": "Head"}
+CROP = {"full": "Whole character", "half": "Upper body", "head": "Head"}
 
 
 def shot_name(key):
@@ -127,6 +125,9 @@ html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container 
 .busy .progress-bar-wrap { width: 100% !important; height: 10px !important; border-radius: 5px; overflow: hidden; }
 .busy .progress-text { position: static !important; transform: none !important; order: 2; padding: 4px 0 0 !important;
   font-family: inherit !important; }
+.gradio-container table, .gradio-container table .text { font-family: var(--font) !important; }
+html[dir="rtl"] .gradio-container .wrap-inner .icon-wrap { right: auto; left: var(--size-5); }
+.gradio-container .wrap-inner input[role="combobox"] { padding-inline-end: var(--size-6); }
 #preview img { object-fit: contain; }
 #upscaler-models label { align-items: center; }
 .model-info { margin-inline-start: 8px; width: 22px; height: 22px; flex: none; border-radius: 50%; cursor: pointer;
@@ -142,12 +143,12 @@ html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container 
 #model-info-dialog button { padding: 4px 14px; border-radius: 6px; cursor: pointer;
   border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary);
   color: var(--body-text-color); }
-html[lang="ar"] .toast-title, html[lang="ar"] .wrap.default > span.error { font-size: 0; }
-html[lang="ar"] .toast-title::before, html[lang="ar"] .wrap.default > span.error::before { font-size: 16px; }
-html[lang="ar"] .wrap.default > span.error::before { content: "__ERROR__"; }
-""".replace("__ERROR__", AR["Error"]) + "".join(
-    f'html[lang="ar"] .toast-title.{kind}::before {{ content: "{AR[word]}"; }}\n'
-    for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info")))
+.toast-title, .wrap.default > span.error { font-size: 0; }
+.toast-title::before, .wrap.default > span.error::before { font-size: 16px; }
+""" + "".join(f'html[lang="{lang}"] .toast-title.{kind}::before, html[lang="{lang}"] .wrap.default > span.{kind}::before '
+              f'{{ content: "{text}"; }}\n'
+              for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info"))
+              for lang, text in (("en", word), ("ar", AR[word])))
 
 HEAD = """<script>
 window.aldsLang = (l) => {
@@ -357,8 +358,8 @@ def characters(pname):
 
 
 ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
-               ("already exists", "There are results with this name already. Enable rebuilding to save a version "
-                                  "and build again, or pick another name."),
+               ("already exists", "This character is already built. Tick “Build this character again”, or type "
+                                  "another name."),
                ("no matches", "The character wasn't found. Raise “Match threshold” a little or pick other clusters"),
                ("no characters detected", "No characters were found in the episodes"),
                ("nothing scanned yet", "Scan at least one episode first (tab 1)"),
@@ -374,6 +375,8 @@ ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
 
 def gui_error(e: SystemExit):
     msg = str(e) or "failed"
+    if msg in AR:
+        return gr.Error(t(msg))
     hint = next((h for key, h in ERROR_HINTS if key in msg), None)
     return gr.Error(f"{t(hint)}\n\n{ltr(msg)}" if hint else ltr(msg))
 
@@ -793,10 +796,10 @@ def filter_choices(pname, char):
     scores = identity_review(pname, char)
     count = lambda key: sum(scores.get(f.stem, {}).get(key, False) for f in files)
     alike = look_alikes(pname, char)
-    for label, n, value in (("❓ Ambiguous identity ({n})", count("uncertain"), "_uncertain"),
+    for label, n, value in (("❓ Unsure who it is ({n})", count("uncertain"), "_uncertain"),
                             ("⚠ To check ({n})", sum(is_review(root, f) for f in files), "_review"),
                             ("🚫 Like what you rejected ({n})", sum(f.stem in alike for f in files), "_alike"),
-                            ("✅ Confirmed identity ({n})", count("confirmed"), "_confirmed")):
+                            ("✅ Confirmed ({n})", count("confirmed"), "_confirmed")):
         if n:
             choices.append((t(label, n=n), value))
     for o in outfits_of(pname, char):
@@ -851,22 +854,21 @@ def panel(pname, char, files, idx):
         info += t(" — 🚫 looks like an image you rejected as another character")
     current = identity_review(pname, char).get(f.stem)
     if current:
-        info += "\n\n" + t("Current identity distance: {score}. This is a distance, not a confidence percentage.",
-                             score=f"{current['score']:.3f}")
-        if current["confirmed"]:
-            info += " " + t("✅ You confirmed this character.")
-        elif current["uncertain"]:
-            info += " " + t("❓ Check identity: weak match or close to another character.")
+        info += "\n\n" + t("Match score: {score} (lower = closer to the character).", score=f"{current['score']:.3f}")
         if current["margin"] is not None:
-            info += " " + t("Margin to another character: {margin} (larger is clearer).", margin=f"{current['margin']:.3f}")
+            info += " " + t("Gap to the closest other character: {margin} (bigger = clearer).",
+                            margin=f"{current['margin']:.3f}")
+        if current["confirmed"]:
+            info += "\n\n" + t("✅ You confirmed this character.")
+        elif current["uncertain"]:
+            info += "\n\n" + t("❓ Check who this is: a weak match, or close to another character.")
     if meta:
         m, s = divmod(int(meta["t"]), 60)
-        info += "\n\n" + t("Image: {crop} — episode {ep} at {at} — match score {score} (lower is better) — "
-                           "sharpness {sharp}", crop=t(CROP.get(meta["type"], meta["type"])),
-                           ep=f"v{meta['vid']:02d}", at=f"{m}:{s:02d}", score=f"{meta['ccip']:.3f}",
-                           sharp=f"{meta['sharp']:.0f}")
+        info += "\n\n" + ("" if meta["type"] == "scene" else t(CROP.get(meta["type"], meta["type"])) + " · ") + t(
+            "Episode {ep} at {at} · sharpness {sharp}", ep=f"v{meta['vid']:02d}", at=f"{m}:{s:02d}",
+            sharp=f"{meta['sharp']:.0f}")
         if meta.get("upscaled", 1) > 1:
-            info += t(" — upscaled ×{f}", f=f"{meta['upscaled']:.1f}")
+            info += t(" · enlarged ×{f}", f=f"{meta['upscaled']:.1f}")
     return str(f), caption, info
 
 
@@ -880,9 +882,10 @@ def stats_text(pname, char):
     trash = root.parent / "_deleted"
     n_del = len(list(trash.rglob("*.png"))) if trash.exists() else 0
     n_rej = len(negatives.load(root.parent)[0])
-    return (t("**{n}** images — **{r}** to check — deleted: {d}", n=len(files), r=n_review, d=n_del)
-            + (t(" — rejected as another character: {n}", n=n_rej) if n_rej else "")
-            + t(" — confirmed references: {n}", n=len(positives.load(root.parent)[0])))
+    n_conf = len(positives.load(root.parent)[0])
+    return (t("**{n}** images · **{r}** to check · {d} deleted", n=len(files), r=n_review, d=n_del)
+            + (t(" · {n} rejected as another character", n=n_rej) if n_rej else "")
+            + (t(" · {n} confirmed", n=n_conf) if n_conf else ""))
 
 
 def review_outputs(pname, char, files, idx, regallery=True):
@@ -993,7 +996,7 @@ def confirm_image(pname, char, flt, files, idx):
     src = files[idx]
     if not positives.confirm(char_dir_of(pname, char), src):
         raise gr.Error(t("Build this character once to save its identity features."))
-    gr.Info(t("Saved as an identity reference. Preview the effect before rebuilding."))
+    gr.Info(t("Confirmed. Preview the effect before you build again."))
     files = list_files(pname, char, flt)
     idx = files.index(src) if src in files else idx
     return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
@@ -1017,24 +1020,23 @@ def confirmed_image(pname, char, name):
 def unconfirm_image(pname, char, flt, files, idx, name):
     from . import positives
     if not pname or not char or not name:
-        raise gr.Error(t("Pick a confirmed reference."))
+        raise gr.Error(t("Pick a confirmed image."))
     positives.remove(char_dir_of(pname, char), name)
     files = list_files(pname, char, flt)
     return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
 
 
-IMPACT_COLUMNS = ["Episode", "Time", "Change", "Before distance", "After distance"]
-IMPACT_NOTE = ("Uses the last build's references and settings to compare identity matching without manual feedback "
-               "against all current confirmations and rejections. Counts are frames, before the scene and "
-               "quality filters and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.")
+IMPACT_COLUMNS = ["Episode", "Time", "Change", "Score before", "Score after"]
+IMPACT_NOTE = ("See how your confirmations and rejections change the frames that match the character in the next build. "
+               "Nothing changes until you build again. The counts are frames, before the scene filters.")
 
 
 def impact_view(data):
     if not data:
-        return t("Run the feedback preview after changing confirmations or rejections."), table([], IMPACT_COLUMNS)
+        return t("Press “Preview the effect” after confirming or rejecting images."), table([], IMPACT_COLUMNS)
     summary = t("Matched frames: {before} → {after}. New: {added}; excluded: {removed}; different person: {switched}.",
                 **{k: data[k] for k in ("before", "after", "added", "removed", "switched")})
-    summary += "\n\n" + t("References: {confirmed} confirmed, {rejected} rejected. Showing up to 24 changed frames.",
+    summary += "\n\n" + t("{confirmed} confirmed and {rejected} rejected images. Up to 24 changed frames are shown.",
                             confirmed=data["confirmed"], rejected=data["rejected"])
     rows = [[f"v{r['vid']:02d}", mmss(r["t"]), t(r["change"]),
              round(r["before"], 3) if r["before"] is not None else "—",
@@ -1106,7 +1108,7 @@ def _tag_state(pname, char, query=""):
     cnt, n = tag_counts(char_dir_of(pname, char))
     q = (query or "").strip().lower()
     rows = [[tag, c, round(100 * c / max(n, 1), 1)] for tag, c in cnt.most_common() if q in tag.lower()]
-    status = t("**{n}** captions — **{k}** different tags — changes you can undo: {u}",
+    status = t("**{n}** captions · **{k}** different tags · {u} changes you can undo",
                n=n, k=len(cnt), u=history_size(char_dir_of(pname, char)))
     outfits = outfits_of(pname, char)
     if outfits:
@@ -1504,8 +1506,8 @@ def build_page(demo, gpu):
                     sheet = gr.Image(label=t("Cluster preview"), interactive=False, height=320,
                                      buttons=["fullscreen"])
                     refs = gr.File(file_count="multiple", file_types=["image"], type="filepath", height=150,
-                                   label=t("Or/and: reference images of the character (optional, useful for side "
-                                           "characters)"))
+                                   label=t("Reference images of the character (optional, with the clusters or "
+                                           "instead of them; useful for side characters)"))
                     name = gr.Textbox(label=t("Trigger word (the character's name)"), elem_classes="ltr",
                                       placeholder="natsu_ft")
                     series = gr.Textbox(label=t("Anime name as a tag (optional)"), elem_classes="ltr",
@@ -1545,7 +1547,8 @@ def build_page(demo, gpu):
                                              info=t("EVA02_Large is the most accurate; the others are faster."))
                         opts = gr.CheckboxGroup(build_options(), value=["auto_reject", "outfits", "screencap"],
                                                 label=t("Options"))
-                    overwrite = gr.Checkbox(label=t("Rebuild this character: save a version and keep matching reviews"))
+                    overwrite = gr.Checkbox(label=t("Build this character again (the current result is saved as a "
+                                                    "version, and your review carries over)"))
                     preview_btn = gr.Button(t("🔎 Preview these settings"))
                     busy_preview, stop_preview = running()
                     build_btn = gr.Button(t("▶ Build the image set"), variant="primary")
@@ -1558,10 +1561,11 @@ def build_page(demo, gpu):
             build_log = gr.Textbox(lines=14, label=t("Report"), elem_classes="log")
 
         with gr.Tab(t("3. Review"), id="review"):
-            gr.Markdown(t("Start with ❓ ambiguous identities and ⚠ images to check. Confirm clear examples with "
-                          "**Definitely this character**. **N** rejects another character; **Delete** removes a bad "
-                          "image without learning its identity. **← →** to move, **Ctrl+Z** to undo removal. "
-                          "Manage confirmations and preview their effect in **Identity references and feedback preview**."))
+            gr.Markdown(t("- Images marked ❓ (unsure who it is) and ⚠ (to check) come first: look at them before the "
+                          "rest.\n- **✅ Definitely this character** confirms a clear image, and the program learns "
+                          "from it.\n- **🚫 N** removes another character and learns to leave out what looks like it. "
+                          "**🗑 Delete** removes a bad image.\n- **← →** move between images, **Ctrl+Z** undoes a "
+                          "removal."))
             with gr.Row():
                 r_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
                 r_filter = gr.Dropdown(label=t("Show"), choices=[(t("All"), "all")], value="all", scale=2)
@@ -1581,20 +1585,21 @@ def build_page(demo, gpu):
                     version_delete_confirm = gr.Checkbox(label=t("Delete the selected version for good"), scale=3)
                     version_delete = gr.Button(t("🗑 Delete version"), variant="stop", scale=1)
                 version_log = gr.Textbox(label=t("Log"), lines=3, elem_classes="log")
-            with gr.Accordion(t("✅ Identity references and feedback preview"), open=False):
-                gr.Markdown(t("Confirm clear examples, especially different angles and outfits. Ambiguous images appear first in All."))
+            with gr.Accordion(t("✅ Confirmed images and the effect of your review"), open=False):
+                gr.Markdown(t("Confirm clear images from different angles and in different outfits. Images marked ❓ "
+                              "come first under “All”."))
                 with gr.Row():
                     with gr.Column():
-                        confirmed_pick = gr.Dropdown(label=t("Confirmed references"), choices=[], elem_classes="ltr")
+                        confirmed_pick = gr.Dropdown(label=t("Confirmed images"), choices=[], elem_classes="ltr")
                         confirmed_thumb = gr.Image(interactive=False, height=200, show_label=False)
                         unconfirm_btn = gr.Button(t("↶ Remove this confirmation"))
                     with gr.Column(scale=2):
                         gr.Markdown(t(IMPACT_NOTE))
-                        impact_btn = gr.Button(t("🔎 Preview confirmation and rejection effects"))
+                        impact_btn = gr.Button(t("🔎 Preview the effect"))
                         busy_impact, stop_impact = running()
                         impact_summary = gr.Markdown()
                         impact_table = gr.Dataframe(headers=IMPACT_COLUMNS, interactive=False)
-                impact_gal = gr.Gallery(label=t("Changed matches (when source frames are available)"),
+                impact_gal = gr.Gallery(label=t("Frames that change (when the frames are still on disk)"),
                                         columns=4, height=350, object_fit="contain")
                 impact_state = gr.State({})
             with gr.Row():
@@ -1732,7 +1737,7 @@ def build_page(demo, gpu):
     long_action(preview_btn, stop_preview, busy_preview, do_preview, build_inputs,
                 [preview_gal, preview_summary, build_log, preview_state], build_log)
     def clear_preview():
-        return [], t("Settings or identity feedback changed. Run the preview again to see the updated result."), {}
+        return [], t("Settings or your review changed. Run the preview again to see the new result."), {}
     for control in build_inputs:
         control.change(L(clear_preview), None, [preview_gal, preview_summary, preview_state], concurrency_id="gpu")
     built = long_action(build_btn, stop_build, busy_build, do_build, build_inputs,
@@ -1905,8 +1910,9 @@ def launch(port=7860, open_browser=True):
     language = saved_lang()
     demo = build_ui(language)
     demo.queue(default_concurrency_limit=1).launch(
-        server_name="127.0.0.1", server_port=port, inbrowser=False, prevent_thread_lock=True,
-        allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS, head=HEAD.replace("__LANG__", language).replace("__MODEL_INFO__", model_info_json()))
+        server_name="127.0.0.1", server_port=port, inbrowser=False, prevent_thread_lock=True, footer_links=[],
+        allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS,
+        head=HEAD.replace("__LANG__", language).replace("__MODEL_INFO__", model_info_json()))
     if open_browser:
         webbrowser.open(f"http://127.0.0.1:{port}/")
     demo.block_thread()
