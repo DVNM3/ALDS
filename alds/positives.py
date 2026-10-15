@@ -64,15 +64,6 @@ def confirm(char_dir, png):
     return True
 
 
-def reject(char_dir, name):
-    built, _ = negatives.build_features(char_dir)
-    if name not in built:
-        return False
-    with transaction(char_dir, name):
-        _reject(char_dir, name, built)
-    return True
-
-
 def reject_image(char_dir, png):
     png = Path(png)
     built, _ = negatives.build_features(char_dir)

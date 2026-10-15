@@ -210,11 +210,11 @@ When you rebuild, your review carries over to the images from the same episode a
 ### review
 In the interface, or by hand: open the `sorted` folder and delete every image that isn't the character, starting with `_review`. The `.txt` captions can be edited too.
 
-**Definitely this character** adds the image as an extra reference for the character. Pick clear images from different angles and outfits. They are listed under **Identity references and feedback preview**, where a wrong confirmation can be taken back.
+**Definitely this character** adds the image as an extra reference for the character. Pick clear images from different angles and outfits. They are listed under **Confirmed images and the effect of your review**, where a wrong confirmation can be taken back.
 
-**❓ Ambiguous identity** shows weak matches and images close to another character first. The number shown is a distance (lower is closer), not a percentage.
+**❓ Unsure who it is** shows weak matches and images close to another character first. The match score shown is lower for images closer to the character; it isn't a percentage.
 
-**Preview confirmation and rejection effects** shows which frames your confirmations and rejections add or leave out, with up to 24 examples. It changes nothing; the counts are frames, before filtering.
+**Preview the effect** shows which frames your confirmations and rejections add or leave out, with up to 24 examples. It changes nothing; the counts are frames, before filtering.
 
 ```bat
 alds.bat reject -p fairytail -n natsu_ft v01_00616.0s_full.png

@@ -23,11 +23,11 @@ MIN_COUNT, MIN_SHARE = 8, 0.08
 
 def garment_nouns(tags):
     out = set()
-    for t in tags:
-        if t.endswith(" sleeves"):
-            out.add(t)
+    for tag in tags:
+        if tag.endswith(" sleeves"):
+            out.add(tag)
             continue
-        hits = [w for w in re.split(r"[\s\-_()]+", t) if w in GARMENTS]
+        hits = [w for w in re.split(r"[\s\-_()]+", tag) if w in GARMENTS]
         if hits:
             out.add(hits[-1])
     return out

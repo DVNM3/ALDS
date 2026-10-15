@@ -8,6 +8,12 @@ from alds.cache import CropCache
 from test_preservation import ProjectTest
 
 
+def reject(char_dir, name):
+    built, _ = negatives.build_features(char_dir)
+    with positives.transaction(char_dir, name):
+        positives._reject(char_dir, name, built)
+
+
 def distances(a, b):
     return np.abs(np.asarray(a)[:, 0, None] - np.asarray(b)[None, :, 0])
 
@@ -42,7 +48,7 @@ class FeedbackTests(ProjectTest):
 
     def test_confirmation_is_separate_idempotent_and_reversible(self):
         original = (self.char / "ccip.npz").read_bytes()
-        positives.reject(self.char, "b")
+        reject(self.char, "b")
         self.assertTrue(positives.confirm(self.char, self.pngs["b"]))
         self.assertTrue(positives.confirm(self.char, self.pngs["b"]))
         self.assertEqual(positives.load(self.char)[0], ["b"])
@@ -64,14 +70,14 @@ class FeedbackTests(ProjectTest):
             return real_save(char_dir, names, feats, file)
         with patch.object(negatives, "_save", side_effect=fail_confirmations):
             with self.assertRaises(OSError):
-                positives.reject(self.char, "b")
+                reject(self.char, "b")
         self.assertEqual(self.files(self.char), before)
-        positives.reject(self.char, "b")
+        reject(self.char, "b")
         self.assertEqual(positives.load(self.char)[0], [])
         self.assertEqual(negatives.load(self.char)[0], ["b"])
 
     def test_failed_thumbnail_does_not_commit_confirmation(self):
-        positives.reject(self.char, "b")
+        reject(self.char, "b")
         before = self.files(self.char)
         with patch.object(Image, "open", side_effect=OSError("bad image")):
             with self.assertRaises(OSError):
@@ -120,7 +126,7 @@ class FeedbackTests(ProjectTest):
     def test_impact_is_read_only_and_works_without_frames(self):
         self.scan()
         positives.confirm(self.char, self.pngs["b"])
-        positives.reject(self.char, "a")
+        reject(self.char, "a")
         before = self.files(self.p.dir)
         result = feedback.preview_impact(self.p, "hero")
         self.assertEqual((result["added"], result["removed"], result["switched"]), (2, 2, 1))
