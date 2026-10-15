@@ -1122,7 +1122,7 @@ def tag_absorb(pname, char, picked, query, goal="character"):
     if not char:
         raise gr.Error(t("Pick the character"))
     if not picked:
-        raise gr.Error(t("Check one or more tags first"))
+        raise gr.Error(t("Pick one or more tags first"))
     p = Project(safe_name(pname))
     fixed = protected(p, char)
     moving = [tag for tag in picked if not fixed(tag)]
@@ -1139,7 +1139,7 @@ def tag_restore(pname, char, picked, query, goal="character"):
     if not char:
         raise gr.Error(t("Pick the character"))
     if not picked:
-        raise gr.Error(t("Check one or more tags first"))
+        raise gr.Error(t("Pick one or more tags first"))
     n = restore_captions(Project(safe_name(pname)), char, picked)
     gr.Info(t("Put back in the captions: {tags}. Changed {n} captions.", tags=", ".join(picked), n=n))
     return tag_views(pname, char, query, goal)

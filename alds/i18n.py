@@ -385,23 +385,23 @@ AR = {
     "🖌 Style": "🖌 ستايل",
     "👕 Outfit": "👕 ملابس",
     "Tags for this goal (checked = in at least 20% of the images)":
-        "وسوم هذا الغرض (المحدَّد = يظهر في 20% من الصور على الأقل)",
-    "🔒 Move the checked into the trigger word": "🔒 انقل المحدَّد إلى كلمة التفعيل",
+        "وسوم هذا الغرض (المؤشَّر عليها = تظهر في 20% من الصور على الأقل)",
+    "🔒 Move the checked into the trigger word": "🔒 انقل المؤشَّر عليها إلى كلمة التفعيل",
     "🔒 Learned by the trigger word (not in the captions)": "🔒 تتعلّمها كلمة التفعيل (ليست في الأوصاف)",
-    "↩ Put the checked back in the captions": "↩ أعد المحدَّد إلى الأوصاف",
+    "↩ Put the checked back in the captions": "↩ أعد المؤشَّر عليها إلى الأوصاف",
     "🔒 Move the selected into the trigger word": "🔒 انقل المحدد إلى كلمة التفعيل",
     "No tags of this kind in the captions.": "لا توجد وسوم من هذا النوع في الأوصاف.",
     "Removed from every caption, so the trigger word learns them as part of the character. The number is how many "
     "images had the tag. Check a tag and put it back to return it to those images.":
         "حُذفت من كل الأوصاف، فتتعلمها كلمة التفعيل كجزء من الشخصية. الرقم هو عدد الصور التي كان فيها الوسم. "
-        "حدّد وسمًا وأعده ليرجع إلى تلك الصور في مكانه.",
+        "ضع علامة على وسم وأعده ليرجع إلى تلك الصور في مكانه.",
     "Empty. Tags you move here are removed from every caption, so the trigger word learns them as part of the "
     "character.":
         "فارغة. الوسوم التي تنقلها إلى هنا تُحذف من كل الأوصاف، فتتعلمها كلمة التفعيل كجزء من الشخصية.",
     "Removed when these images were made by an older version: {tags}. Rebuild the character to get every tag back "
     "in the captions.":
         "حُذفت عند صنع هذه الصور بإصدار أقدم: {tags}. أعد بناء الشخصية لتعود كل الوسوم إلى الأوصاف.",
-    "Check one or more tags first": "حدّد وسمًا أو أكثر أولًا",
+    "Pick one or more tags first": "اختر وسمًا أو أكثر أولًا",
     "The trigger word, the series and the outfit tags stay in the captions":
         "كلمة التفعيل واسم السلسلة ووسوم الأزياء تبقى في الأوصاف",
     "Moved into the trigger word: {tags}. Changed {n} captions.": "نُقل إلى كلمة التفعيل: {tags}. عُدّل {n} وصف.",
