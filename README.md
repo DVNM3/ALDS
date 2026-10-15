@@ -50,7 +50,7 @@ Pictures taken from the episodes are blurred here; in the program they show as t
   <tr>
     <td width="50%" valign="top">
       <a href="docs/screenshots/pick.png"><img src="docs/screenshots/pick.png" alt="Pick the character"></a>
-      <br><b>Pick the character.</b> Every character found in the episodes gets a card. Click yours, type a trigger word and build the image set.
+      <br><b>Pick the character.</b> Every character found in the episodes gets a card. Click yours, type a trigger word, add your own images if you have some, and build the image set.
     </td>
     <td width="50%" valign="top">
       <a href="docs/screenshots/tags.png"><img src="docs/screenshots/tags.png" alt="Tag editor"></a>
