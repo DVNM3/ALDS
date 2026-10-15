@@ -112,7 +112,8 @@ Review keys:
 | **← →** | Previous and next image. |
 | **Ctrl+Z** | Undo the last removal. |
 
-- **Stop button:** every long action shows one while it runs. The action stops within seconds and the project is back exactly as it was. The same happens when an action fails, and with **Ctrl+C** on the command line.
+- **Progress:** every long action shows a progress bar under its button and writes each step to its log box as it goes, in the interface language.
+- **Stop button:** every long action shows one while it runs. The action stops within seconds and the project is back exactly as it was, so starting again begins from the start. The same happens when an action fails, and with **Ctrl+C** on the command line.
 - Removed images aren't deleted for good: they move to a `_deleted` folder inside the character folder.
 - **🕘 Saved build versions** (Review tab): save, compare, restore or delete a version. Images that didn't change are stored only once.
 - **Preview these settings** (Pick the character): runs the filters on 12 frames spread over the episodes. Upscaling and outfit tags only run in the full build.
@@ -130,7 +131,7 @@ projects\<project>\
   characters\<name>\
     sorted\close_up\front\ ...   a PNG image + a .txt caption, sorted by shot and angle
     sorted\_review\ ...          doubtful images to check first
-    report.txt                   statistics and the angle distribution
+    report.txt                   the build steps, statistics and the angle distribution
     versions\<version>\          earlier results: images, captions and review
   previews\<name>\               last settings preview (separate from the finished images)
 ```
@@ -272,7 +273,7 @@ alds.bat restore-frames -p fairytail --videos-dir "D:\anime\moved-season"
 Only the missing frames with a character are decoded, by their frame number and time; frames inside the OP/ED are skipped. The program checks the resolution, frame rate, duration and timing, and for scans made with this version the exact file too. If an episode is missing or different, nothing is changed.
 
 ## Tuning
-- `report.txt` shows how the match scores are spread. If other characters slip in, lower `--threshold` (e.g. 0.11); if there are too few images, raise it (e.g. 0.15).
+- `report.txt` lists the build steps and says how many frames are just above the match threshold. If other characters slip in, lower `--threshold` (e.g. 0.11); if there are too few images, raise it (e.g. 0.15).
 - `--sim 0.85` keeps more similar images; `0.75` removes duplicates more strictly.
 - `--min-height 0.6` leaves out scenes where the character is smaller than 60% of the frame height (default 0.5).
 - `--upscale --upscale-to 1024 --upscaler waifu2x` upscales smaller scenes to your training resolution. Models: `waifu2x` (default, closest to the original), `animevideov3` (crisper lines), `animesharp` (sharp), `apisr` (redraws the lines and changes the style) and `cdc` (adds grain; ALDS used it up to version 0.4.1). `--upscaler-version 2` or `4` uses one version of a model that has both (default `auto`: 2x up to double, 4x above). A model that isn't downloaded yet is downloaded on first use; `alds.bat upscalers` shows which are.
