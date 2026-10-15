@@ -51,6 +51,15 @@ def rating_tag(rating: dict) -> str:
     return RATING_MAP.get(max(rating, key=rating.get), "safe")
 
 
+def people_count(general) -> int:
+    total = 0
+    for tag in general:
+        m = COUNT_RE.match(tag)
+        if m:
+            total += 2 if tag.startswith("multiple") else int(tag[0])
+    return total
+
+
 def classify(crop_type: str, general: dict, portrait: str, pose=None):
     from .angles import is_three_quarter
     if crop_type == "head":

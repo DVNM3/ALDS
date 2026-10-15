@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROJECTS_DIR = ROOT / "projects"
 VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".avi", ".mov", ".m4v", ".ts"}
+DEFAULT_MIN_HEIGHT = 0.5
 
 
 def load_json(path, default=None):
@@ -50,7 +51,7 @@ def setup_runtime():
 
 def release_models():
     for name, module in list(sys.modules.items()):
-        if name.startswith("imgutils") and module is not None:
+        if name.startswith(("imgutils", "alds.")) and module is not None:
             for value in list(vars(module).values()):
                 if callable(getattr(value, "cache_clear", None)):
                     value.cache_clear()

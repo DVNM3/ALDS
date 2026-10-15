@@ -183,8 +183,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
     </div>
     <img class="shot hero-shot en" src="screenshots/review.png" width="1280" height="1190" alt="The review tab">
     <img class="shot hero-shot ar" src="screenshots/review-ar.png" width="1280" height="1165" alt="تبويب المراجعة">
-    <p class="intro en">Making a character LoRA from an anime usually means hours of taking screenshots, cropping, sorting and writing captions. ALDS does it from the episode files: it finds every character in the episodes, lets you pick yours, and builds a sorted, captioned image set that you review in a few minutes and train on.</p>
-    <p class="intro ar">تجهيز LoRA لشخصية من أنمي يعني عادة ساعات من التقاط الصور وقصّها وترتيبها وكتابة أوصافها. ALDS يفعل ذلك من ملفات الحلقات مباشرة: يجد كل شخصية فيها، ويتيح لك اختيار شخصيتك، ثم يبني مجموعة صور مرتّبة وموصوفة تراجعها في دقائق وتدرّب عليها.</p>
+    <p class="intro en">Making a character LoRA from an anime usually means hours of taking screenshots, sorting them and writing captions. ALDS does it from the episode files: it finds every character in the episodes, lets you pick yours, and builds a sorted, captioned set of the scenes where your character is alone, which you review in a few minutes and train on.</p>
+    <p class="intro ar">تجهيز LoRA لشخصية من أنمي يعني عادة ساعات من التقاط الصور وترتيبها وكتابة أوصافها. ALDS يفعل ذلك من ملفات الحلقات مباشرة: يجد كل شخصية فيها، ويتيح لك اختيار شخصيتك، ثم يبني مجموعة مرتّبة وموصوفة من المشاهد التي تظهر فيها شخصيتك وحدها، تراجعها في دقائق وتدرّب عليها.</p>
   </div>
 
   <section id="features">
@@ -205,9 +205,9 @@ footer nav { margin: 0; flex-wrap: wrap; }
           <p class="ar">تُكتشف شارة البداية والنهاية والملخصات الطويلة بمقارنة الحلقات ببعضها، وتُستبعد.</p>
         </div>
         <div class="card">
-          <h3 class="en">Three crops per shot</h3><h3 class="ar">ثلاث قصّات لكل لقطة</h3>
-          <p class="en">Whole body, upper body and head, each one checked again to be the right character.</p>
-          <p class="ar">الجسم كاملًا والنصف العلوي والرأس، وكل قصّة يُتحقق مرة أخرى من أنها للشخصية الصحيحة.</p>
+          <h3 class="en">Whole scenes, character alone</h3><h3 class="ar">مشاهد كاملة والشخصية وحدها</h3>
+          <p class="en">Only the frames where your character is the only one on screen are used, uncut, and the character must fill at least half the frame height.</p>
+          <p class="ar">تُستخدم فقط الإطارات التي تظهر فيها شخصيتك وحدها، كاملة دون قص، على ألا تقل الشخصية عن نصف ارتفاع الإطار.</p>
         </div>
         <div class="card">
           <h3 class="en">Filters out bad images</h3><h3 class="ar">يستبعد الصور السيئة</h3>
@@ -236,8 +236,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
         </div>
         <div class="card">
           <h3 class="en">Anime upscaler</h3><h3 class="ar">تكبير بنموذج للأنمي</h3>
-          <p class="en">Optionally, small crops are enlarged with a model made for anime instead of being thrown away.</p>
-          <p class="ar">اختياريًا، تُكبَّر القصّات الصغيرة بنموذج مخصص للأنمي بدل استبعادها.</p>
+          <p class="en">Optionally, scenes smaller than your training size are enlarged with an anime model you choose: waifu2x, Real-ESRGAN animevideov3, AnimeSharp, APISR or CDC. A model is downloaded only when you choose it, and can be deleted to free the space.</p>
+          <p class="ar">اختياريًا، تُكبَّر المشاهد الأصغر من دقة التدريب بموديل أنمي تختاره: waifu2x أو Real-ESRGAN animevideov3 أو AnimeSharp أو APISR أو CDC. يُحمَّل الموديل فقط عند اختياره، ويمكن حذفه لتوفير المساحة.</p>
         </div>
         <div class="card">
           <h3 class="en">Fast rebuilds</h3><h3 class="ar">إعادة بناء سريعة</h3>
@@ -448,30 +448,30 @@ footer nav { margin: 0; flex-wrap: wrap; }
         <table class="en">
           <tr><th>Stage</th><th>How</th></tr>
           <tr><td>Recognising the character</td><td class="desc">CCIP compares every detected character with the references; the default threshold is 0.13.</td></tr>
-          <tr><td>Cropping</td><td class="desc">Three crops: the whole body, the upper body and the head. Every head or upper-body crop is checked for identity again.</td></tr>
+          <tr><td>Scenes</td><td class="desc">The whole frame, never cut. Only frames where your character is alone: no other person detected, and the tagger counts one person. The character must be at least half the frame height.</td></tr>
           <tr><td>Other characters</td><td class="desc">The clusters you didn't pick show what other characters look like; frames closer to one of them than to yours are left out.</td></tr>
-          <tr><td>Leaving out</td><td class="desc">Text on screen (read with OCR), dark or faded frames, black-and-white or sepia flashbacks, another character overlapping, chibi and blurry drawings.</td></tr>
+          <tr><td>Leaving out</td><td class="desc">Text on screen (read with OCR), dark or faded frames, black-and-white or sepia flashbacks, chibi and blurry drawings.</td></tr>
           <tr><td>Removing duplicates</td><td class="desc">Visual similarity (WD14 embedding) ≥ 0.80; the sharpest image is kept.</td></tr>
           <tr><td>Tags</td><td class="desc">WD14 EVA02-Large, in Anima's style: lowercase, spaces instead of <code>_</code>.</td></tr>
           <tr><td>Caption order</td><td class="desc"><code>anime screencap, safe, 1boy, &lt;trigger&gt;, &lt;series&gt;, &lt;tags...&gt;</code></td></tr>
           <tr><td>Fixed features</td><td class="desc">Hair and eye colours and the hairstyle are removed from the captions so the trigger word learns them (<code>--keep-core</code> keeps them).</td></tr>
           <tr><td>Angle</td><td class="desc">Tags give side, back, from above and from below; where the eyes sit inside the face separates three-quarter from front.</td></tr>
-          <tr><td>Outfits</td><td class="desc">Body crops grouped by their clothing tags and how they look, with a tag per outfit when there is more than one.</td></tr>
-          <tr><td>Upscaling (optional)</td><td class="desc">Every image smaller than 1024 pixels is enlarged with the CDC anime upscaler, at most 4×.</td></tr>
+          <tr><td>Outfits</td><td class="desc">Images grouped by their clothing tags and how they look, with a tag per outfit when there is more than one.</td></tr>
+          <tr><td>Upscaling (optional)</td><td class="desc">Every scene smaller than 1024 pixels is enlarged with the model you choose, at most 4×, in small tiles that need little graphics memory.</td></tr>
         </table>
         <table class="ar">
           <tr><th>المرحلة</th><th>الطريقة</th></tr>
           <tr><td>التعرف على الشخصية</td><td class="desc">يقارن CCIP كل شخصية مكتشفة بالمراجع، والحد الافتراضي 0.13.</td></tr>
-          <tr><td>القص</td><td class="desc">ثلاث قصّات: الجسم كاملًا والنصف العلوي والرأس، وتُفحص هوية كل قصّة للرأس أو النصف العلوي مرة أخرى.</td></tr>
+          <tr><td>المشاهد</td><td class="desc">الإطار كاملًا دون قص. فقط الإطارات التي تظهر فيها شخصيتك وحدها: لا يُكتشف شخص آخر، ويَعدّ الموسِّم شخصًا واحدًا. ويجب ألا تقل الشخصية عن نصف ارتفاع الإطار.</td></tr>
           <tr><td>الشخصيات الأخرى</td><td class="desc">المجموعات التي لم تخترها تبيّن شكل الشخصيات الأخرى، فيُستبعد كل إطار أقرب إلى إحداها منه إلى شخصيتك.</td></tr>
-          <tr><td>الاستبعاد</td><td class="desc">النصوص على الشاشة (تُقرأ بـ OCR)، والإطارات المظلمة أو الباهتة، ومشاهد الذكريات بالأبيض والأسود أو البني، وتداخل شخصية أخرى، والرسم المصغّر والضبابي.</td></tr>
+          <tr><td>الاستبعاد</td><td class="desc">النصوص على الشاشة (تُقرأ بـ OCR)، والإطارات المظلمة أو الباهتة، ومشاهد الذكريات بالأبيض والأسود أو البني، والرسم المصغّر والضبابي.</td></tr>
           <tr><td>إزالة التكرار</td><td class="desc">التشابه البصري (تضمين WD14) ≥ 0.80، ويُبقى الأوضح.</td></tr>
           <tr><td>الوسوم</td><td class="desc">WD14 EVA02-Large بأسلوب Anima: أحرف صغيرة ومسافات بدل <code>_</code>.</td></tr>
           <tr><td>ترتيب الوصف</td><td class="desc"><code>anime screencap, safe, 1boy, &lt;trigger&gt;, &lt;series&gt;, &lt;tags...&gt;</code></td></tr>
           <tr><td>الصفات الثابتة</td><td class="desc">تُحذف ألوان الشعر والعينين وتسريحة الشعر من الأوصاف لتتعلمها كلمة التفعيل (<code>--keep-core</code> يُبقيها).</td></tr>
           <tr><td>الزاوية</td><td class="desc">الوسوم تحدد الجانب والخلف والأعلى والأسفل، وموضع العينين في الوجه يفرّق بين ثلاثة أرباع والأمام.</td></tr>
-          <tr><td>الأزياء</td><td class="desc">تُجمَّع قصّات الجسم حسب وسوم الملابس وشكلها، ولكل زي وسم إن كان هناك أكثر من زي.</td></tr>
-          <tr><td>التكبير (اختياري)</td><td class="desc">كل صورة أصغر من 1024 بكسل تُكبَّر بنموذج CDC للأنمي، بحد أقصى 4×.</td></tr>
+          <tr><td>الأزياء</td><td class="desc">تُجمَّع الصور حسب وسوم الملابس وشكلها، ولكل زي وسم إن كان هناك أكثر من زي.</td></tr>
+          <tr><td>التكبير (اختياري)</td><td class="desc">كل مشهد أصغر من 1024 بكسل يُكبَّر بالموديل الذي تختاره، بحد أقصى 4×، على أجزاء صغيرة لا تحتاج ذاكرة كبيرة من كرت الشاشة.</td></tr>
         </table>
       </div>
     </div>
@@ -531,21 +531,21 @@ alds.bat export -p myshow -n my_char --total 100</code></pre>
         <ul class="list en">
           <li><code>report.txt</code> shows how the match scores are spread. If other characters slip in, lower <code>--threshold</code> (e.g. 0.11); if there are too few images, raise it (e.g. 0.15).</li>
           <li><code>--sim 0.85</code> keeps more similar images; <code>0.75</code> removes duplicates more strictly.</li>
-          <li><code>--min-size 512</code> rejects small crops. The default is 448, or 320 with <code>--upscale</code>.</li>
-          <li><code>--upscale --upscale-to 768</code> upscales to your training resolution.</li>
+          <li><code>--min-height 0.6</code> leaves out scenes where the character is smaller than 60% of the frame height (default 0.5).</li>
+          <li><code>--upscale --upscaler waifu2x</code> upscales smaller scenes to your training resolution (<code>--upscale-to</code>, default 1024).</li>
           <li><code>--save-dropped</code> keeps the left-out images, to check the filters.</li>
           <li><code>--overwrite</code> saves a version before rebuilding and carries matching review decisions forward. Use <code>versions</code> to compare or restore results.</li>
-          <li><code>--preview</code> checks the build settings on 12 sampled frames, with reasons for accepted and excluded crops.</li>
+          <li><code>--preview</code> checks the build settings on 12 sampled frames, with reasons for accepted and excluded scenes.</li>
           <li><code>restore-frames</code> recovers missing frames from the original episodes after cleaning.</li>
         </ul>
         <ul class="list ar">
           <li>يعرض <code>report.txt</code> توزيع درجات التطابق. إن دخلت شخصيات أخرى فاخفض <code>--threshold</code> (مثل 0.11)، وإن قلّت الصور فارفعه (مثل 0.15).</li>
           <li><code>--sim 0.85</code> يُبقي صورًا متشابهة أكثر، و<code>0.75</code> يحذف التكرار بصرامة أكبر.</li>
-          <li><code>--min-size 512</code> يستبعد القصّات الصغيرة. الافتراضي 448، أو 320 مع <code>--upscale</code>.</li>
-          <li><code>--upscale --upscale-to 768</code> يكبّر الصور إلى دقة التدريب.</li>
+          <li><code>--min-height 0.6</code> يستبعد المشاهد التي تقل فيها الشخصية عن 60% من ارتفاع الإطار (الافتراضي 0.5).</li>
+          <li><code>--upscale --upscaler waifu2x</code> يكبّر المشاهد الأصغر إلى دقة التدريب (<code>--upscale-to</code>، الافتراضي 1024).</li>
           <li><code>--save-dropped</code> يحفظ الصور المستبعدة لتتحقق من الفلاتر.</li>
           <li><code>--overwrite</code> يحفظ نسخة قبل إعادة البناء وينقل مراجعات الصور المطابقة. استخدم <code>versions</code> للمقارنة أو استعادة النتائج.</li>
-          <li><code>--preview</code> يعاين إعدادات البناء على ١٢ إطارًا، مع أسباب قبول الصور واستبعادها.</li>
+          <li><code>--preview</code> يعاين إعدادات البناء على ١٢ إطارًا، مع أسباب قبول المشاهد واستبعادها.</li>
           <li><code>restore-frames</code> يستعيد الإطارات المفقودة من الحلقات الأصلية بعد التنظيف.</li>
         </ul>
       </div>
@@ -555,11 +555,13 @@ alds.bat export -p myshow -n my_char --total 100</code></pre>
         <ul class="list en">
           <li><a href="https://github.com/deepghs/imgutils">imgutils</a> by deepghs: character detection, CCIP identity features, OCR, the CDC upscaler and the WD14 tagger interface.</li>
           <li><a href="https://huggingface.co/SmilingWolf/wd-eva02-large-tagger-v3">WD14 taggers</a> by SmilingWolf for the tags.</li>
+          <li>Upscaling models: <a href="https://github.com/nagadomi/nunif">waifu2x</a>, <a href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a> animevideov3, <a href="https://huggingface.co/Kim2091/AnimeSharp">AnimeSharp</a> and <a href="https://github.com/Kiteretsu77/APISR">APISR</a>, downloaded on first use under their own licences.</li>
           <li><a href="https://www.gradio.app/">Gradio</a> for the interface, <a href="https://github.com/PyAV-Org/PyAV">PyAV</a> for decoding and <a href="https://scikit-learn.org/">scikit-learn</a> for clustering.</li>
         </ul>
         <ul class="list ar">
           <li><a href="https://github.com/deepghs/imgutils">imgutils</a> من deepghs: كشف الشخصيات، وبصمة الهوية CCIP، وقراءة النصوص، ونموذج التكبير CDC، وواجهة موسِّم WD14.</li>
           <li><a href="https://huggingface.co/SmilingWolf/wd-eva02-large-tagger-v3">موسِّمات WD14</a> من SmilingWolf للوسوم.</li>
+          <li>موديلات التكبير: <a href="https://github.com/nagadomi/nunif">waifu2x</a> و<a href="https://github.com/xinntao/Real-ESRGAN">Real-ESRGAN</a> animevideov3 و<a href="https://huggingface.co/Kim2091/AnimeSharp">AnimeSharp</a> و<a href="https://github.com/Kiteretsu77/APISR">APISR</a>، تُحمَّل عند أول استخدام وفق تراخيصها.</li>
           <li><a href="https://www.gradio.app/">Gradio</a> للواجهة، و<a href="https://github.com/PyAV-Org/PyAV">PyAV</a> لفك ترميز الفيديو، و<a href="https://scikit-learn.org/">scikit-learn</a> للتجميع.</li>
         </ul>
       </div>

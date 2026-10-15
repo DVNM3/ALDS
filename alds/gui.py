@@ -15,7 +15,8 @@ from PIL import Image
 
 from . import cancel, txn
 from .cancel import Cancelled
-from .common import PROJECTS_DIR, Project, inside, mmss, parse_ranges, release_models, safe_name
+from .common import DEFAULT_MIN_HEIGHT, PROJECTS_DIR, Project, inside, mmss, parse_ranges, release_models, safe_name
+from .upscale import DEFAULT as DEFAULT_UPSCALER, LABELS as UPSCALERS
 from .i18n import AR, LANGS, lang, t, use
 
 
@@ -26,7 +27,7 @@ def ltr(text) -> str:
 FRAMING = {"close_up": "Close-up", "upper_body": "Upper body", "cowboy_shot": "Cowboy shot", "full_body": "Full body"}
 VIEW = {"front": "Front", "three_quarter": "Three-quarter", "side": "Side", "back": "Back", "above": "From above",
         "below": "From below"}
-CROP = {"full": "Whole character", "half": "Upper body", "head": "Head"}
+CROP = {"scene": "Whole scene", "full": "Whole character", "half": "Upper body", "head": "Head"}
 
 
 def shot_name(key):
@@ -37,13 +38,74 @@ def angle_name(key):
     return t(VIEW[key]) if key in VIEW else key
 
 
+def upscaler_choices():
+    return [(t(label), key) for key, label in UPSCALERS.items()]
+
+
+def model_version_choices():
+    return [(t("Automatic (recommended)"), "auto"), ("2x", "2"), ("4x", "4")]
+
+
+def model_versions(model, version):
+    from .upscale import versions
+    both = len(versions(model)) > 1
+    return gr.update(visible=both, value=version if both else "auto")
+
+
+def model_info_json():
+    from .upscale import INFO
+    return json.dumps({key: {"en": [label, INFO[key]], "ar": [AR.get(label, label), AR.get(INFO[key], INFO[key])]}
+                       for key, label in UPSCALERS.items()}, ensure_ascii=False)
+
+
+def model_status(model, version="auto"):
+    from .upscale import downloaded_size, megabytes, size_mb, versions
+    if not model:
+        return ""
+    if version != "auto" and int(version) not in versions(model):
+        version = "auto"
+    size = downloaded_size(model, version)
+    name = t(UPSCALERS[model]) + ("" if version == "auto" else f" · {version}x")
+    if size:
+        return t("✅ {name} is downloaded ({size} MB).", name=name, size=megabytes(size))
+    return t("⬇ {name} isn't downloaded yet ({size} MB). It's downloaded when you choose it.",
+             name=name, size=size_mb(model, version))
+
+
+def do_model(upscale_on, model, version="auto", progress=gr.Progress()):
+    from .upscale import download, downloaded_size, versions
+    if not upscale_on or not model:
+        return gr.update(), gr.update()
+    if version != "auto" and int(version) not in versions(model):
+        version = "auto"
+    if not downloaded_size(model, version):
+        progress(0.5, desc=t("Downloading {name}...", name=t(UPSCALERS[model])))
+        try:
+            download(model, version)
+        except Cancelled:
+            raise
+        except Exception:
+            raise gr.Error(t("Couldn't download {name}. Check the internet connection and try again.",
+                             name=t(UPSCALERS[model])))
+    return model_status(model, version), gr.update(visible=True)
+
+
+def delete_model(model, version="auto"):
+    from .upscale import delete, megabytes
+    if not model:
+        raise gr.Error(t("Pick a model"))
+    freed = delete(model)
+    gr.Info(t("Deleted {name} and freed {size} MB. It's downloaded again when you choose it.",
+              name=t(UPSCALERS[model]), size=megabytes(freed)))
+    return model_status(model, version), gr.update(visible=False)
+
+
 def build_options():
     return [(t("Leave out other characters, using the clusters you didn't pick"), "auto_reject"),
             (t("Separate outfits automatically (a tag per outfit after the trigger word)"), "outfits"),
             (t("Put anime screencap at the start of every caption"), "screencap"),
             (t("Keep hair and eye tags in the captions"), "keep_core"),
             (t("Keep images with text on screen"), "keep_text"),
-            (t("Keep images crowded with other characters"), "keep_crowded"),
             (t("Keep chibi and blurry drawings"), "keep_offmodel"),
             (t("Keep black-and-white and sepia images (flashbacks)"), "keep_mono"),
             (t("Save the left-out images in a {folder} folder", folder="_dropped"), "save_dropped"),
@@ -58,6 +120,20 @@ html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container 
 .ltr textarea, .ltr input { direction: ltr !important; text-align: left !important; }
 #log textarea { direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 12px; }
 #preview img { object-fit: contain; }
+#upscaler-models label { align-items: center; }
+.model-info { margin-inline-start: 8px; width: 22px; height: 22px; flex: none; border-radius: 50%%; cursor: pointer;
+  border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary);
+  color: var(--body-text-color); font-weight: 700; line-height: 20px; padding: 0; }
+.model-info:hover { border-color: var(--color-accent); color: var(--color-accent); }
+#model-info-dialog { max-width: min(520px, 90vw); padding: 18px 20px; border-radius: 10px;
+  border: 1px solid var(--border-color-primary); background: var(--background-fill-primary);
+  color: var(--body-text-color); }
+#model-info-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+#model-info-dialog h3 { margin: 0 0 8px; font-size: 17px; }
+#model-info-dialog p { margin: 0 0 14px; line-height: 1.7; }
+#model-info-dialog button { padding: 4px 14px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary);
+  color: var(--body-text-color); }
 html[lang="ar"] .toast-title, html[lang="ar"] .wrap.default > span.error { font-size: 0; }
 html[lang="ar"] .toast-title::before, html[lang="ar"] .wrap.default > span.error::before { font-size: 16px; }
 html[lang="ar"] .wrap.default > span.error::before { content: "%s"; }
@@ -98,6 +174,42 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowRight') click(rtl ? 'btn-prev' : 'btn-next');
   else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { click('btn-undo'); click('btn-tag-undo'); }
 });
+window.aldsModelInfo = __MODEL_INFO__;
+const aldsShowModel = (key) => {
+  const info = window.aldsModelInfo[key];
+  if (!info) return;
+  const lang = document.documentElement.lang === 'ar' ? 'ar' : 'en';
+  let d = document.getElementById('model-info-dialog');
+  if (!d) {
+    d = document.createElement('dialog');
+    d.id = 'model-info-dialog';
+    d.append(document.createElement('h3'), document.createElement('p'), document.createElement('button'));
+    d.querySelector('button').type = 'button';
+    d.querySelector('button').addEventListener('click', () => d.close());
+    d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+    document.body.appendChild(d);
+  }
+  d.dir = document.documentElement.dir;
+  d.querySelector('h3').textContent = info[lang][0];
+  d.querySelector('p').textContent = info[lang][1];
+  d.querySelector('button').textContent = lang === 'ar' ? 'إغلاق' : 'Close';
+  d.showModal();
+};
+const aldsDecorateModels = () => {
+  const box = document.getElementById('upscaler-models');
+  if (!box) return;
+  box.querySelectorAll('input[type=radio]').forEach((input) => {
+    const label = input.closest('label');
+    if (!label || label.querySelector('.model-info')) return;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'model-info';
+    b.textContent = '!';
+    b.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); aldsShowModel(input.value); });
+    label.appendChild(b);
+  });
+};
+new MutationObserver(aldsDecorateModels).observe(document.documentElement, {childList: true, subtree: true});
 </script>"""
 
 VIDEO_COLUMNS = ["#", "Episode", "Length (min)", "Frames", "Left out automatically"]
@@ -379,8 +491,8 @@ def pick_cluster(pname, selected, evt: gr.SelectData):
     return sel, str(p.clusters_dir / f"cluster_{c['id']:02d}.jpg")
 
 
-def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
-             tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True), *, preview=False):
+def do_build(pname, selected, ref_files, name, series, upscale_on, upscaler, upscale_version, upscale_to, threshold,
+             min_height, sim, relax, tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True), *, preview=False):
     from .build import check_overwrite, run_build
     p = need_project(pname)
     name = (name or "").strip()
@@ -404,11 +516,11 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
             ref_dir.mkdir(parents=True)
             for f in ref_files:
                 shutil.copy2(f, ref_dir / Path(f).name)
-        return run_build(p, name, ids, ref_dir, threshold, relax, int(min_size), sim,
+        return run_build(p, name, ids, ref_dir, threshold, relax, min_height / 100, sim,
                   (series or "").strip() or None, "keep_core" in opts, "screencap" in opts, tagger,
-                  "keep_text" in opts, "keep_crowded" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
+                  "keep_text" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
                   overwrite, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts,
-                  "auto_reject" in opts, "keep_mono" in opts, 12 if preview else 0)
+                  "auto_reject" in opts, "keep_mono" in opts, 12 if preview else 0, upscaler, upscale_version)
 
     progress(0, desc=t("Starting the build..."))
     with contextlib.nullcontext() if preview else working_on(p.char_dir(name)):
@@ -421,10 +533,10 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, t
             gr.update(choices=chars, value=char), gr.Tabs(selected="review"))
 
 
-def do_preview(pname, selected, ref_files, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
-               tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True)):
-    return do_build(pname, selected, ref_files, name, series, upscale_on, upscale_to, threshold, min_size, sim,
-                    relax, tagger, opts, overwrite, progress, preview=True)
+def do_preview(pname, selected, ref_files, name, series, upscale_on, upscaler, upscale_version, upscale_to,
+               threshold, min_height, sim, relax, tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True)):
+    return do_build(pname, selected, ref_files, name, series, upscale_on, upscaler, upscale_version, upscale_to,
+                    threshold, min_height, sim, relax, tagger, opts, overwrite, progress, preview=True)
 
 
 def preview_view(data):
@@ -432,7 +544,7 @@ def preview_view(data):
         return [], t("Preview 12 frames before building. Your finished images stay as they are.")
     gallery = [(it["file"], t(it["reason"]) + (f" · {it['score']:.3f}" if it["score"] is not None else ""))
                for it in data["items"]]
-    summary = t("{frames} sampled frames · {accepted} accepted crops. Duplicates are checked within this "
+    summary = t("{frames} sampled frames · {accepted} accepted scenes. Duplicates are checked within this "
                 "sample. Upscaling and outfit tags are applied in the full build.",
                 frames=data["frames"], accepted=data["accepted"])
     return gallery, summary
@@ -467,7 +579,9 @@ def version_comparison(pname, char, version):
                 "{captions} captions changed, {moved} moved to another group.", **diff)
     if diff["settings"]:
         summary += "\n\n" + t("Changed build settings (saved → current):") + "\n\n"
-        summary += "\n".join(f"- `{key}`: `{values[0]}` → `{values[1]}`" for key, values in sorted(diff["settings"].items()))
+        arrow = "←" if lang() == "ar" else "→"
+        summary += "\n".join(f"- `{key}`: `{values[0]}` {arrow} `{values[1]}`"
+                             for key, values in sorted(diff["settings"].items()))
     return summary
 
 
@@ -586,24 +700,22 @@ def filter_choices(pname, char):
     choices = [(t("All ({n})", n=len(files)), "all")]
     if not files:
         return choices
-    n_review = sum(is_review(root, f) for f in files)
-    if n_review:
-        choices.append((t("⚠ To check ({n})", n=n_review), "_review"))
     scores = identity_review(pname, char)
-    for key, label in (("uncertain", "🔎 Ambiguous identity ({n})"), ("confirmed", "✅ Confirmed identity ({n})")):
-        count = sum(scores.get(f.stem, {}).get(key, False) for f in files)
-        if count:
-            choices.append((t(label, n=count), "_" + key))
+    count = lambda key: sum(scores.get(f.stem, {}).get(key, False) for f in files)
     alike = look_alikes(pname, char)
-    n_alike = sum(f.stem in alike for f in files)
-    if n_alike:
-        choices.append((t("🚫 Like what you rejected ({n})", n=n_alike), "_alike"))
+    for label, n, value in (("❓ Ambiguous identity ({n})", count("uncertain"), "_uncertain"),
+                            ("⚠ To check ({n})", sum(is_review(root, f) for f in files), "_review"),
+                            ("🚫 Like what you rejected ({n})", sum(f.stem in alike for f in files), "_alike"),
+                            ("✅ Confirmed identity ({n})", count("confirmed"), "_confirmed")):
+        if n:
+            choices.append((t(label, n=n), value))
     for o in outfits_of(pname, char):
         n = sum(o["token"] in caption_tags(f) for f in files)
         choices.append((t("🧥 Outfit {id}: {tags} ({n})", id=o["id"], tags=", ".join(o["tags"][:2]), n=n),
                         f"outfit:{o['token']}"))
     counts = Counter("/".join(group_of(root, f)) for f in files)
-    order = lambda g: (list(FRAMING).index(g.split("/")[0]) if g.split("/")[0] in FRAMING else 9, g)
+    rank = lambda key, names: list(names).index(key) if key in names else len(names)
+    order = lambda g: (rank(g.split("/")[0], FRAMING), rank((g.split("/") + [""])[1], VIEW), g)
     for g in sorted(counts, key=order):
         fr, vw = (g.split("/") + [""])[:2]
         choices.append((t("{shot} · {angle} ({n})", shot=shot_name(fr), angle=angle_name(vw), n=counts[g]), g))
@@ -627,7 +739,7 @@ def gallery_items(pname, char, files):
     alike = look_alikes(pname, char)
     scores = identity_review(pname, char)
     return [(str(thumb(root.parent, f)), "✅" if scores.get(f.stem, {}).get("confirmed") else
-             "🚫" if f.stem in alike else "🔎" if scores.get(f.stem, {}).get("uncertain") else
+             "🚫" if f.stem in alike else "❓" if scores.get(f.stem, {}).get("uncertain") else
              "⚠" if is_review(root, f) else None)
             for f in map(Path, files)]
 
@@ -654,12 +766,12 @@ def panel(pname, char, files, idx):
         if current["confirmed"]:
             info += " " + t("✅ You confirmed this character.")
         elif current["uncertain"]:
-            info += " " + t("🔎 Check identity: weak match or close to another character.")
+            info += " " + t("❓ Check identity: weak match or close to another character.")
         if current["margin"] is not None:
             info += " " + t("Margin to another character: {margin} (larger is clearer).", margin=f"{current['margin']:.3f}")
     if meta:
         m, s = divmod(int(meta["t"]), 60)
-        info += "\n\n" + t("Crop: {crop} — episode {ep} at {at} — match score {score} (lower is better) — "
+        info += "\n\n" + t("Image: {crop} — episode {ep} at {at} — match score {score} (lower is better) — "
                            "sharpness {sharp}", crop=t(CROP.get(meta["type"], meta["type"])),
                            ep=f"v{meta['vid']:02d}", at=f"{m}:{s:02d}", score=f"{meta['ccip']:.3f}",
                            sharp=f"{meta['sharp']:.0f}")
@@ -823,8 +935,8 @@ def unconfirm_image(pname, char, flt, files, idx, name):
 
 IMPACT_COLUMNS = ["Episode", "Time", "Change", "Before distance", "After distance"]
 IMPACT_NOTE = ("Uses the last build's references and settings to compare identity matching without manual feedback "
-               "against all current confirmations and rejections. Counts are frames, before quality filters, "
-               "cropping and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.")
+               "against all current confirmations and rejections. Counts are frames, before the scene and "
+               "quality filters and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.")
 
 
 def impact_view(data):
@@ -1012,7 +1124,8 @@ def save_summary(pname, char, parent):
              t("- Trigger word: `{name}`", name=build.get("name", char))
              + (t(" — anime name: `{series}`", series=build["series"]) if build.get("series") else "")]
     if upscaled & stems:
-        lines.append(t("- Upscaled with the anime model: {n}", n=len(upscaled & stems)))
+        model = build.get("settings", {}).get("upscaler") or "cdc"
+        lines.append(t("- Upscaled with {model}: {n}", model=t(UPSCALERS.get(model, model)), n=len(upscaled & stems)))
     for o in build.get("outfits", []):
         n = sum(o["token"] in caption_tags(f) for f in files)
         lines.append(t("- Outfit {id} `{token}`: {n} images ({tags})", id=o["id"], token=o["token"], n=n,
@@ -1157,13 +1270,13 @@ def build_page(demo, gpu):
                                                      "is used for the comparison"))
                     skip = gr.Textbox(label=t("More times to ignore (optional)"), elem_classes="ltr",
                                       placeholder="0:00-1:55, 21:55-24:30")
-                    with gr.Accordion(t("Advanced settings"), open=False):
+                    with gr.Accordion(t("⚙️ Advanced settings"), open=False):
                         gr.Markdown(t("You rarely need these: the defaults suit most anime."))
                         gr.Markdown(t("**Opening and ending (OP/ED)**"))
                         auto_min = gr.Slider(15, 120, 40, step=5, label=t("Shortest OP/ED (seconds)"),
                                              info=t("A part repeated between episodes is left out only if it's at "
                                                     "least this long. Lower it if a short OP/ED isn't found."))
-                        autoskip_btn = gr.Button(t("Find the OP/ED again in the scanned episodes"))
+                        autoskip_btn = gr.Button(t("🔁 Find the OP/ED again in the scanned episodes"))
                         stop_auto = gr.Button(stop_label(), variant="stop", visible=False)
                         gr.Markdown(t("**Which frames are kept** (for new scans)"))
                         min_gap = gr.Slider(0.1, 2.0, 0.35, step=0.05, label=t("Time between kept frames (seconds)"),
@@ -1178,7 +1291,7 @@ def build_page(demo, gpu):
                     vids_df = gr.Dataframe(headers=VIDEO_COLUMNS, interactive=False, wrap=True,
                                            label=t("Episodes scanned in this project"),
                                            column_widths=["5%", "31%", "13%", "13%", "38%"])
-                    with gr.Accordion(t("💾 Disk space"), open=False):
+                    with gr.Accordion(t("💽 Disk space"), open=False):
                         usage = gr.Markdown()
                         gr.Markdown(t("**Safe clean** deletes only what the program will never use again: frames "
                                       "with no character, frames inside the OP/ED, thumbnails and leftover copies. "
@@ -1203,7 +1316,7 @@ def build_page(demo, gpu):
                 with gr.Column(scale=3):
                     clusters_gal = gr.Gallery(label=t("Characters found"), columns=5, height=560,
                                               allow_preview=False, object_fit="contain", buttons=[])
-                    with gr.Accordion(t("Fix the clusters (two characters mixed, or one split up)"), open=False):
+                    with gr.Accordion(t("🧩 Fix the clusters (two characters mixed, or one split up)"), open=False):
                         gr.Markdown(t("**One character in several clusters?** Usually there's nothing to fix: just "
                                       "select all of them.\n\n**Two characters in one cluster?** Select only that "
                                       "cluster, then split it:"))
@@ -1219,7 +1332,7 @@ def build_page(demo, gpu):
                                                "got split."))
                         min_csize = gr.Slider(3, 40, 8, step=1, label=t("Hide clusters with fewer views than"),
                                               info=t("Small clusters are usually background characters."))
-                        recluster_btn = gr.Button(t("Re-cluster the whole project"))
+                        recluster_btn = gr.Button(t("🔁 Re-cluster the whole project"))
                         stop_clu = gr.Button(stop_label(), variant="stop", visible=False)
                         recluster_log = gr.Textbox(lines=6, label=t("Log"), elem_id="log")
                 with gr.Column(scale=2):
@@ -1233,12 +1346,21 @@ def build_page(demo, gpu):
                                       placeholder="natsu_ft")
                     series = gr.Textbox(label=t("Anime name as a tag (optional)"), elem_classes="ltr",
                                         placeholder="fairy tail")
-                    upscale_on = gr.Checkbox(label=t("Enlarge small images with an anime upscaler (CDC): cleaner "
-                                                     "lines than plain resizing, and small crops become usable"))
-                    upscale_to = gr.Slider(512, 1536, 1024, step=64, visible=False,
-                                           label=t("Enlarge every image smaller than this to it (pixels; use your "
-                                                   "training resolution)"))
-                    with gr.Accordion(t("Advanced settings"), open=False):
+                    upscale_on = gr.Checkbox(label=t("Enlarge small scenes with an anime upscaler: cleaner lines "
+                                                     "than plain resizing"))
+                    with gr.Column(visible=False) as upscale_box:
+                        upscaler = gr.Radio(upscaler_choices(), value=DEFAULT_UPSCALER, label=t("Upscaling model"),
+                                            info=t("Press ! next to a model to read about it."),
+                                            elem_id="upscaler-models")
+                        upscale_version = gr.Radio(model_version_choices(), value="auto", label=t("Model version"),
+                                                   info=t("Automatic uses 2x for enlargements up to double and 4x "
+                                                          "above. Choosing one version downloads only that version."))
+                        model_info = gr.Markdown()
+                        model_delete = gr.Button(t("🗑 Delete this model to free space"), size="sm", visible=False)
+                        upscale_to = gr.Slider(512, 2048, 1024, step=64,
+                                               label=t("Enlarge every scene smaller than this to it (pixels; use "
+                                                       "your training resolution)"))
+                    with gr.Accordion(t("⚙️ Advanced settings"), open=False):
                         gr.Markdown(t("The defaults suit most anime. If the result isn't right, change one setting "
                                       "and build again: rebuilding is fast."))
                         threshold = gr.Slider(0.06, 0.25, 0.13, step=0.005, label=t("Match threshold"),
@@ -1247,9 +1369,10 @@ def build_page(demo, gpu):
                         sim = gr.Slider(0.60, 0.98, 0.80, step=0.01, label=t("Duplicate removal"),
                                         info=t("Lower = removes more look-alike images. Higher = keeps more "
                                                "similar ones."))
-                        min_size = gr.Slider(256, 1024, 448, step=32, label=t("Smallest image size (pixels)"),
-                                             info=t("Smaller crops are left out. Turning on enlarging lowers it to "
-                                                    "320."))
+                        min_height = gr.Slider(10, 100, round(DEFAULT_MIN_HEIGHT * 100), step=5,
+                                               label=t("Smallest character in the scene (% of the frame height)"),
+                                               info=t("Scenes where the character is smaller are left out. Only "
+                                                      "scenes where the character is alone are used."))
                         relax = gr.Slider(1.0, 2.0, 1.0, step=0.05, label=t("Follow the character within a shot"),
                                           info=t("1 = off (recommended). Higher takes more frames from the same "
                                                  "shot, but may let other characters in."))
@@ -1263,15 +1386,15 @@ def build_page(demo, gpu):
                     stop_preview = gr.Button(stop_label(), variant="stop", visible=False)
                     build_btn = gr.Button(t("▶ Build the image set"), variant="primary")
                     stop_build = gr.Button(stop_label(), variant="stop", visible=False)
-            with gr.Accordion(t("Settings preview"), open=True):
+            with gr.Accordion(t("🔎 Settings preview"), open=True):
                 preview_state = gr.State({})
                 preview_summary = gr.Markdown(preview_view({})[1])
-                preview_gal = gr.Gallery(columns=6, height=360, label=t("Accepted and excluded crops"),
+                preview_gal = gr.Gallery(columns=6, height=360, label=t("Accepted and excluded scenes"),
                                          object_fit="contain")
             build_log = gr.Textbox(lines=14, label=t("Report"), elem_id="log")
 
         with gr.Tab(t("3. Review"), id="review"):
-            gr.Markdown(t("Start with 🔎 ambiguous identities and ⚠ images to check. Confirm clear examples with "
+            gr.Markdown(t("Start with ❓ ambiguous identities and ⚠ images to check. Confirm clear examples with "
                           "**Definitely this character**. **N** rejects another character; **Delete** removes a bad "
                           "image without learning its identity. **← →** to move, **Ctrl+Z** to undo removal. "
                           "Manage confirmations and preview their effect in **Identity references and feedback preview**."))
@@ -1279,7 +1402,7 @@ def build_page(demo, gpu):
                 r_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
                 r_filter = gr.Dropdown(label=t("Show"), choices=[(t("All"), "all")], value="all", scale=2)
                 r_stats = gr.Markdown()
-            with gr.Accordion(t("Saved build versions"), open=False):
+            with gr.Accordion(t("🕘 Saved build versions"), open=False):
                 gr.Markdown(t("A version is saved before every rebuild. Restoring also saves the current result. "
                               "Versions stay inside this project; images that didn't change are stored only once."))
                 with gr.Row():
@@ -1294,7 +1417,7 @@ def build_page(demo, gpu):
                     version_delete_confirm = gr.Checkbox(label=t("Delete the selected version for good"), scale=3)
                     version_delete = gr.Button(t("🗑 Delete version"), variant="stop", scale=1)
                 version_log = gr.Textbox(label=t("Log"), lines=3)
-            with gr.Accordion(t("Identity references and feedback preview"), open=False):
+            with gr.Accordion(t("✅ Identity references and feedback preview"), open=False):
                 gr.Markdown(t("Confirm clear examples, especially different angles and outfits. Ambiguous images appear first in All."))
                 with gr.Row():
                     with gr.Column():
@@ -1331,7 +1454,7 @@ def build_page(demo, gpu):
                     with gr.Row():
                         move_to = gr.Dropdown(label=t("Wrong group? Move it to"), choices=[], scale=3)
                         move_btn = gr.Button(t("↪ Move"), scale=1)
-                    forget_btn = gr.Button(t("Forget all images rejected as another character"), size="sm")
+                    forget_btn = gr.Button(t("🧹 Forget all images rejected as another character"), size="sm")
             files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
 
         with gr.Tab(t("4. Tags"), id="tags"):
@@ -1411,9 +1534,16 @@ def build_page(demo, gpu):
     long_action(restore_frames_btn, stop_restore, do_restore_frames, [project, restore_folder],
                 [scan_log, usage, vids_df])
     clusters_gal.select(L(pick_cluster), [project, chosen], [chosen, sheet])
-    upscale_on.change(lambda on: (gr.update(visible=on), gr.update(value=320 if on else 448)),
-                      upscale_on, [upscale_to, min_size])
-    build_inputs = [project, chosen, refs, name, series, upscale_on, upscale_to, threshold, min_size, sim, relax,
+    upscale_on.change(lambda on: gr.update(visible=on), upscale_on, upscale_box, queue=False)
+    model_in = [upscale_on, upscaler, upscale_version]
+    upscale_on.change(L(do_model), model_in, [model_info, model_delete], concurrency_id="download")
+    upscaler.input(model_versions, [upscaler, upscale_version], upscale_version, queue=False) \
+        .then(L(do_model), model_in, [model_info, model_delete], concurrency_id="download")
+    upscale_version.input(L(do_model), model_in, [model_info, model_delete], concurrency_id="download")
+    model_delete.click(L(delete_model), [upscaler, upscale_version], [model_info, model_delete],
+                       concurrency_id="gpu")
+    build_inputs = [project, chosen, refs, name, series, upscale_on, upscaler, upscale_version, upscale_to, threshold,
+                    min_height, sim, relax,
                     tagger, opts, overwrite]
     long_action(preview_btn, stop_preview, do_preview, build_inputs,
                 [preview_gal, preview_summary, build_log, preview_state])
@@ -1493,11 +1623,12 @@ def build_page(demo, gpu):
 
     texts = static_texts(demo)
     for block, props in ((title, {"value": lambda: title_md(gpu)}), (lang_btn, {"value": other_language}),
-                         (opts, {"choices": build_options})):
+                         (opts, {"choices": build_options}), (upscaler, {"choices": upscaler_choices}),
+                         (upscale_version, {"choices": model_version_choices})):
         texts.setdefault(block._id, (block, {}))[1].update(props)
     refreshed = [vids_df, clusters_gal, usage, r_filter, move_to, r_info, r_stats, t_table, t_status, e_summary,
                  groups_df, del_hint, version_pick, version_diff, preview_gal, preview_summary,
-                 impact_summary, impact_table, impact_gal]
+                 impact_summary, impact_table, impact_gal, model_info]
     switch_outputs = [block for block, _ in texts.values()] + [b for b in refreshed if b._id not in texts]
     tab_names = [(props["label"], AR[props["label"]]) for block, props in texts.values()
                  if isinstance(block, gr.Tab)]
@@ -1514,7 +1645,8 @@ def build_page(demo, gpu):
 
     demo.load(L(init_page), project, [lang_box, project, *proj_outputs]).then(None, lang_box, None, js=set_direction)
 
-    def switch_language(pname, char, files, idx, tchar, query, echar, parent, version, preview, impact):
+    def switch_language(pname, char, files, idx, tchar, query, echar, parent, version, preview, impact,
+                        upscale_on, model, upscale_version):
         from .aitk import save_settings
         new = "en" if lang() == "ar" else "ar"
         _session_langs[_session()] = new
@@ -1546,12 +1678,14 @@ def build_page(demo, gpu):
                               (preview_summary, {"value": preview_text}),
                               (impact_summary, {"value": impact_text}),
                               (impact_table, {"value": impact_rows}),
-                              (impact_gal, {"value": impact_images(impact)})):
+                              (impact_gal, {"value": impact_images(impact)}),
+                              (model_info, {"value": model_status(model, upscale_version) if upscale_on else ""})):
                 updates.setdefault(block._id, {}).update(kw)
         return [page_language(new)] + [gr.update(**updates[block._id]) for block in switch_outputs]
 
     lang_btn.click(L(switch_language), [project, r_char, files_st, idx_st, t_char, t_search, e_char, e_out,
-                                      version_pick, preview_state, impact_state],
+                                      version_pick, preview_state, impact_state, upscale_on, upscaler,
+                                      upscale_version],
                    [lang_box, *switch_outputs]).then(None, lang_box, None, js=set_direction)
     return texts
 
@@ -1565,7 +1699,7 @@ def launch(port=7860, open_browser=True):
     demo = build_ui(language)
     demo.queue(default_concurrency_limit=1).launch(
         server_name="127.0.0.1", server_port=port, inbrowser=False, prevent_thread_lock=True,
-        allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS, head=HEAD.replace("__LANG__", language))
+        allowed_paths=[str(PROJECTS_DIR)], theme=gr.themes.Soft(), css=CSS, head=HEAD.replace("__LANG__", language).replace("__MODEL_INFO__", model_info_json()))
     if open_browser:
         webbrowser.open(f"http://127.0.0.1:{port}/")
     demo.block_thread()

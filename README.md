@@ -22,23 +22,23 @@
 
 ![The review tab](docs/screenshots/review.png)
 
-Making a character LoRA from an anime usually means hours of taking screenshots, cropping, sorting and writing captions. ALDS does it from the episode files: it finds every character in the episodes, lets you pick yours, and builds a sorted, captioned image set that you review in a few minutes and train on.
+Making a character LoRA from an anime usually means hours of taking screenshots, sorting them and writing captions. ALDS does it from the episode files: it finds every character in the episodes, lets you pick yours, and builds a sorted, captioned set of the scenes where your character is alone, which you review in a few minutes and train on.
 
 ## Features
 - **Finds your character.** Every character in the episodes is detected and grouped by identity, so you pick yours with one click. A few reference images work too, which helps with side characters.
 - **Skips the opening and ending.** The OP/ED and long recaps are found by comparing the episodes with each other, and left out.
-- **Three crops per shot.** Whole body, upper body and head, each one checked again to be the right character.
+- **Whole scenes, character alone.** Only the frames where your character is the only one on screen are used, uncut. Another detected person, or a tagger count such as `1girl` and `1boy`, leaves the scene out, and so does a character smaller than half the frame height (adjustable).
 - **Leaves out other characters.** The clusters you didn't pick show what the other characters look like, so images that resemble one of them more than yours are left out before you review.
-- **Filters out bad images.** On-screen text, dark or faded frames, black-and-white or sepia flashbacks, other characters in the way, chibi and blurry drawings, and near-duplicates.
+- **Filters out bad images.** On-screen text, dark or faded frames, black-and-white or sepia flashbacks, chibi and blurry drawings, and near-duplicates.
 - **Captions in Anima's style.** WD14 tags in Anima's order with your trigger word. Fixed features such as hair and eye colour are left to the trigger word.
 - **Sorted by shot and angle.** From close-up to full body, and front, three-quarter, side, back, from above and from below.
 - **Separates outfits.** When the character wears more than one outfit, each outfit gets its own tag.
 - **Learns from your review.** Confirm clear images of the character, or reject another character. Doubtful images come first, and you can see the effect before building again.
-- **Anime upscaler (optional).** Small crops are enlarged with a model made for anime instead of being thrown away.
+- **Anime upscaler (optional).** Scenes smaller than your training size are enlarged with a model made for anime. You choose the model: waifu2x (closest to the original), Real-ESRGAN animevideov3, AnimeSharp, APISR or CDC. None of them ships with the program: a model is downloaded when you choose it, and you can delete it again to free the space.
 - **Fast rebuilds.** The analysis is saved, so trying other thresholds or options takes seconds instead of minutes.
 - **Saved versions.** Every rebuild keeps the previous result, which you can compare or bring back. Your review carries over to the new build: edited captions, moved and removed images, and bulk tag edits.
 - **Frames can be restored.** After cleaning, missing frames come back from the original episodes, without scanning again.
-- **Settings preview.** Try the settings on 12 frames first and see why each crop was kept or left out.
+- **Settings preview.** Try the settings on 12 frames first and see why each scene was kept or left out.
 - **Safe to stop.** Every long action can be stopped, and whatever it made is removed.
 - **Ready for AI Toolkit.** From the command line, export can balance the angles and write a job config with the step schedule worked out for your image count.
 
@@ -114,9 +114,10 @@ Review keys:
 
 - **Stop button:** every long action shows one while it runs. The action stops within seconds and the project is back exactly as it was. The same happens when an action fails, and with **Ctrl+C** on the command line.
 - Removed images aren't deleted for good: they move to a `_deleted` folder inside the character folder.
-- **Saved build versions** (Review tab): save, compare, restore or delete a version. Images that didn't change are stored only once.
+- **🕘 Saved build versions** (Review tab): save, compare, restore or delete a version. Images that didn't change are stored only once.
 - **Preview these settings** (Pick the character): runs the filters on 12 frames spread over the episodes. Upscaling and outfit tags only run in the full build.
 - **Restore missing frames** (Disk space): leave the folder empty to use the episodes where they were, or give their new folder. Use the original files, not re-encoded copies.
+- **Upscaling model** (Pick the character): choosing a model downloads it, once, into the shared model folder `%USERPROFILE%\.cache\huggingface`, not into the program folder. **🗑 Delete this model to free space** removes it; press **!** next to a model to read what it does, where it comes from and its licence. waifu2x, AnimeSharp and APISR have a 2x and a 4x version: **Automatic** uses 2x for enlargements up to double and 4x above, and choosing one version downloads only that one.
 
 ## Where your files go
 Everything the program makes stays in the `projects` folder next to it, one folder per project:
@@ -141,15 +142,15 @@ projects\<project>\
 |---|---|
 | Recognising the character | CCIP compares every detected character with the references; the default threshold is 0.13. |
 | Other characters | Images from the clusters you didn't pick that don't look like your character are used to leave out frames closer to another character than to yours (`--no-auto-reject` turns it off). |
-| Cropping | Three crops: the whole body, the upper body and the head. Every head or upper-body crop is checked for identity again. |
-| Leaving out | Text on screen (read with OCR), dark or faded frames, black-and-white or sepia flashbacks (`--keep-mono` keeps them), another character overlapping, chibi and blurry drawings. |
+| Scenes | The whole frame, never cut. Only frames where your character is alone: no other person detected, and the tagger counts one person. The character must be at least half the frame height (`--min-height`). |
+| Leaving out | Text on screen (read with OCR), dark or faded frames, black-and-white or sepia flashbacks (`--keep-mono` keeps them), chibi and blurry drawings. |
 | Removing duplicates | Visual similarity (WD14 embedding) ≥ 0.80; the sharpest image is kept. |
 | Tags | WD14 EVA02-Large, in Anima's style: lowercase, spaces instead of `_`. |
 | Caption order | `anime screencap, safe, 1boy, <trigger>, <series>, <tags...>` |
 | Fixed features | Hair and eye colours and the hairstyle are removed from the captions so the trigger word learns them (`--keep-core` keeps them). |
 | Angle | Tags give side, back, from above and from below; where the eyes sit inside the face separates three-quarter from front. |
-| Outfits | Body crops grouped by their clothing tags and how they look, with a tag per outfit when there is more than one. |
-| Upscaling (optional) | Every image smaller than 1024 pixels is enlarged with the CDC anime upscaler, at most 4×. |
+| Outfits | Images grouped by their clothing tags and how they look, with a tag per outfit when there is more than one. |
+| Upscaling (optional) | Every scene smaller than 1024 pixels (the square root of its area) is enlarged with the model you choose, at most 4×. The model runs on small tiles, so it needs little graphics memory. |
 
 ## Command line
 Everything in the interface is also available as commands, plus balancing and AI Toolkit job configs on export.
@@ -169,6 +170,7 @@ scan  →  pick the character's number  →  build  →  review  →  export
 | `export` | Copy the reviewed images into one dataset folder, optionally balanced, with an AI Toolkit config. |
 | `clean` | Free disk space. |
 | `restore-frames` | Recover missing character frames from the original episodes. |
+| `upscalers` | List the upscaling models; `--download NAME` or `--delete NAME` to free space. |
 | `versions` | List, save, compare, restore or delete a character's saved versions. |
 | `gui` | Open the interface. |
 
@@ -190,7 +192,7 @@ alds.bat build -p fairytail -n natsu_ft --cluster 2 --series "fairy tail"
 - `-n` is the trigger word, also the name of the character folder.
 - `--cluster 2 5` when the character is split over more than one cluster; `--ref folder` for 3 to 10 reference images instead of, or as well as, cluster numbers.
 - Building again with other settings only analyses what's new; `--fresh` redoes everything.
-- `--preview` tries the settings on 12 frames and leaves the built images alone; `--preview 24` for more (up to 60). The crops and the reason for each are written to `projects\<p>\previews\<name>\`.
+- `--preview` tries the settings on 12 frames and leaves the built images alone; `--preview 24` for more (up to 60). The scenes and the reason for each are written to `projects\<p>\previews\<name>\`.
 
 ### versions
 ```bat
@@ -202,16 +204,16 @@ alds.bat versions -p fairytail -n natsu_ft --delete VERSION_ID
 ```
 Take the ID from the list. Every rebuild saves the current result first, and so does restoring, so you can always go back. A version holds the images, captions, confirmations, rejections and reference images.
 
-When you rebuild, your review carries over to the images from the same episode, time and crop: edited captions, group moves and removed images. Bulk tag edits are applied to the new images too, and outfit tags follow the new outfit split. If the rebuild fails or is stopped, the previous result comes back.
+When you rebuild, your review carries over to the images from the same episode and time: edited captions, group moves and removed images. Bulk tag edits are applied to the new images too, and outfit tags follow the new outfit split. If the rebuild fails or is stopped, the previous result comes back.
 
 ### review
 In the interface, or by hand: open the `sorted` folder and delete every image that isn't the character, starting with `_review`. The `.txt` captions can be edited too.
 
 **Definitely this character** adds the image as an extra reference for the character. Pick clear images from different angles and outfits. They are listed under **Identity references and feedback preview**, where a wrong confirmation can be taken back.
 
-**🔎 Ambiguous identity** shows weak matches and images close to another character first. The number shown is a distance (lower is closer), not a percentage.
+**❓ Ambiguous identity** shows weak matches and images close to another character first. The number shown is a distance (lower is closer), not a percentage.
 
-**Preview confirmation and rejection effects** shows which frames your confirmations and rejections add or leave out, with up to 24 examples. It changes nothing; the counts are frames, before cropping and filtering.
+**Preview confirmation and rejection effects** shows which frames your confirmations and rejections add or leave out, with up to 24 examples. It changes nothing; the counts are frames, before filtering.
 
 ```bat
 alds.bat reject -p fairytail -n natsu_ft v01_00616.0s_full.png
@@ -267,8 +269,8 @@ Only the missing frames with a character are decoded, by their frame number and 
 ## Tuning
 - `report.txt` shows how the match scores are spread. If other characters slip in, lower `--threshold` (e.g. 0.11); if there are too few images, raise it (e.g. 0.15).
 - `--sim 0.85` keeps more similar images; `0.75` removes duplicates more strictly.
-- `--min-size 512` rejects small crops. The default is 448 (the square root of the area), or 320 with `--upscale`.
-- `--upscale --upscale-to 768` upscales to your training resolution.
+- `--min-height 0.6` leaves out scenes where the character is smaller than 60% of the frame height (default 0.5).
+- `--upscale --upscale-to 1024 --upscaler waifu2x` upscales smaller scenes to your training resolution. Models: `waifu2x` (default, closest to the original), `animevideov3` (crisper lines), `animesharp` (sharp), `apisr` (redraws the lines and changes the style) and `cdc` (adds grain; ALDS used it up to version 0.4.1). `--upscaler-version 2` or `4` uses one version of a model that has both (default `auto`: 2x up to double, 4x above). A model that isn't downloaded yet is downloaded on first use; `alds.bat upscalers` shows which are.
 - `--save-dropped` keeps the left-out images in `_dropped\<reason>\`, to check the filters.
 - `--overwrite` saves a version, builds again and carries your review over.
 
@@ -280,6 +282,7 @@ The tests use temporary projects and generated videos, with stand-ins for the mo
 
 ## Built with
 - [imgutils](https://github.com/deepghs/imgutils) by deepghs: character detection, CCIP identity features, OCR, the CDC upscaler and the WD14 tagger interface.
+- Upscaling models: [waifu2x](https://github.com/nagadomi/nunif) by nagadomi (ONNX from deepghs), [Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN) animevideov3, [AnimeSharp](https://huggingface.co/Kim2091/AnimeSharp) by Kim2091 and [APISR](https://github.com/Kiteretsu77/APISR). They are downloaded on first use, under their own licences.
 - [WD14 taggers](https://huggingface.co/SmilingWolf/wd-eva02-large-tagger-v3) by SmilingWolf for the tags.
 - [Gradio](https://www.gradio.app/) for the interface, [PyAV](https://github.com/PyAV-Org/PyAV) for decoding and [scikit-learn](https://scikit-learn.org/) for clustering.
 

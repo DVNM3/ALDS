@@ -23,7 +23,7 @@ class GuiTests(ProjectTest):
         self.addCleanup(self.settings.stop)
 
     def test_both_languages_build_with_new_controls_and_callbacks(self):
-        for language, label in (("ar", "نسخ البناء المحفوظة"), ("en", "Saved build versions")):
+        for language, label in (("ar", "🕘 نسخ البناء المحفوظة"), ("en", "🕘 Saved build versions")):
             ui = gui.build_ui(language)
             config = ui.get_config_file()
             self.assertTrue(any(c["props"].get("label") == label for c in config["components"]))

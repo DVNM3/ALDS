@@ -29,7 +29,7 @@ AR = {
     "Settings or identity feedback changed. Run the preview again to see the updated result.":
         "تغيّرت الإعدادات أو مراجعة الهوية. شغّل المعاينة مجددًا لعرض النتيجة المحدّثة.",
     "✅ Definitely this character": "✅ هذه الشخصية بالتأكيد",
-    "Identity references and feedback preview": "مراجع الهوية ومعاينة أثر المراجعة",
+    "✅ Identity references and feedback preview": "✅ مراجع الهوية ومعاينة أثر المراجعة",
     "Confirm clear examples, especially different angles and outfits. Ambiguous images appear first in All.":
         "أكّد الصور الواضحة، خاصة الزوايا والملابس المختلفة. تظهر صور الهوية الملتبسة أولًا عند اختيار «الكل».",
     "Confirmed references": "المراجع المؤكدة",
@@ -37,10 +37,10 @@ AR = {
     "🔎 Preview confirmation and rejection effects": "🔎 معاينة أثر التأكيد والرفض",
     "Changed matches (when source frames are available)": "المطابقات المتغيرة (عند توفر الإطارات الأصلية)",
     "Uses the last build's references and settings to compare identity matching without manual feedback "
-    "against all current confirmations and rejections. Counts are frames, before quality filters, "
-    "cropping and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.":
+    "against all current confirmations and rejections. Counts are frames, before the scene and "
+    "quality filters and deduplication. Deleted images stay deleted. Restore missing frames before rebuilding.":
         "تستخدم مراجع وإعدادات آخر بناء لمقارنة مطابقة الهوية دون مراجعة يدوية بنتيجتها مع جميع التأكيدات والرفض الحالية. "
-        "الأعداد للإطارات قبل فلاتر الجودة والقص وإزالة التكرار. تبقى الصور المحذوفة محذوفة. استعد الإطارات المفقودة قبل إعادة البناء.",
+        "الأعداد للإطارات قبل فلاتر المشاهد والجودة وإزالة التكرار. تبقى الصور المحذوفة محذوفة. استعد الإطارات المفقودة قبل إعادة البناء.",
     "Run the feedback preview after changing confirmations or rejections.": "شغّل معاينة الأثر بعد تغيير التأكيدات أو الرفض.",
     "Matched frames: {before} → {after}. New: {added}; excluded: {removed}; different person: {switched}.":
         "الإطارات المطابقة: {before} ← {after}. جديدة: {added}؛ مستبعدة: {removed}؛ تغيّر الشخص المختار: {switched}.",
@@ -49,17 +49,17 @@ AR = {
     "Current identity distance: {score}. This is a distance, not a confidence percentage.":
         "مسافة الهوية الحالية: {score}. هذا مقياس اختلاف، وليس نسبة ثقة.",
     "✅ You confirmed this character.": "✅ أكّدتَ هوية هذه الشخصية.",
-    "🔎 Check identity: weak match or close to another character.": "🔎 راجع الهوية: المطابقة ضعيفة أو قريبة من شخصية أخرى.",
-    "Start with 🔎 ambiguous identities and ⚠ images to check. Confirm clear examples with "
+    "❓ Check identity: weak match or close to another character.": "❓ راجع الهوية: المطابقة ضعيفة أو قريبة من شخصية أخرى.",
+    "Start with ❓ ambiguous identities and ⚠ images to check. Confirm clear examples with "
     "**Definitely this character**. **N** rejects another character; **Delete** removes a bad "
     "image without learning its identity. **← →** to move, **Ctrl+Z** to undo removal. "
     "Manage confirmations and preview their effect in **Identity references and feedback preview**.":
-        "ابدأ بالهويات الملتبسة 🔎 والصور المعلّمة للمراجعة ⚠. أكّد الصور الواضحة بزر **هذه الشخصية بالتأكيد**. "
+        "ابدأ بالهويات الملتبسة ❓ والصور المعلّمة للمراجعة ⚠. أكّد الصور الواضحة بزر **هذه الشخصية بالتأكيد**. "
         "**N** لرفض شخصية أخرى، و**Delete** لحذف صورة سيئة دون تعلم هويتها. **← →** للتنقل، و**Ctrl+Z** للتراجع عن الحذف. "
         "أدر التأكيدات وعاين أثرها من **مراجع الهوية ومعاينة أثر المراجعة**.",
     "Margin to another character: {margin} (larger is clearer).": "الفارق عن شخصية أخرى: {margin} (الأكبر أوضح).",
     " — confirmed references: {n}": " — المراجع المؤكدة: {n}",
-    "🔎 Ambiguous identity ({n})": "🔎 هوية ملتبسة ({n})",
+    "❓ Ambiguous identity ({n})": "❓ هوية ملتبسة ({n})",
     "✅ Confirmed identity ({n})": "✅ هوية مؤكدة ({n})",
     "Saved as an identity reference. Preview the effect before rebuilding.": "حُفظت الصورة كمرجع للهوية. عاين الأثر قبل إعادة البناء.",
     "Build this character once to save its identity features.": "أعد بناء هذه الشخصية مرة واحدة لحفظ خصائص هويتها.",
@@ -90,14 +90,13 @@ AR = {
     "↶ Restore missing frames": "↶ استعد الإطارات المفقودة",
     "Rebuild this character: save a version and keep matching reviews": "أعد بناء الشخصية مع حفظ نسخة ونقل مراجعات الصور المطابقة",
     "🔎 Preview these settings": "🔎 عاين هذه الإعدادات",
-    "Settings preview": "معاينة الإعدادات",
+    "🔎 Settings preview": "🔎 معاينة الإعدادات",
     "Preview 12 frames before building. Your finished images stay as they are.":
         "عاين ١٢ إطارًا قبل البناء. تبقى صورك النهائية كما هي.",
-    "Accepted and excluded crops": "الصور المقبولة والمستبعدة",
-    "Settings changed. Run the preview again to see the updated result.": "تغيّرت الإعدادات. شغّل المعاينة مجددًا لرؤية النتيجة المحدّثة.",
-    "{frames} sampled frames · {accepted} accepted crops. Duplicates are checked within this sample. Upscaling and outfit tags are applied in the full build.":
-        "عينة من {frames} إطارًا · {accepted} صورة مقبولة. تُقارن الصور المكررة داخل العينة. التكبير ووسوم الأزياء يُطبّقان عند البناء الكامل.",
-    "Saved build versions": "نسخ البناء المحفوظة",
+    "Accepted and excluded scenes": "المشاهد المقبولة والمستبعدة",
+    "{frames} sampled frames · {accepted} accepted scenes. Duplicates are checked within this sample. Upscaling and outfit tags are applied in the full build.":
+        "عينة من {frames} إطارًا · {accepted} مشهدًا مقبولًا. تُقارن المشاهد المكررة داخل العينة. التكبير ووسوم الأزياء يُطبّقان عند البناء الكامل.",
+    "🕘 Saved build versions": "🕘 نسخ البناء المحفوظة",
     "A version is saved before every rebuild. Restoring also saves the current result. Versions stay inside this project; images that didn't change are stored only once.":
         "تُحفظ نسخة قبل كل إعادة بناء، وقبل استعادة نسخة أيضًا. تبقى النسخ داخل المشروع، والصور التي لم تتغير تُخزَّن مرة واحدة فقط.",
     "Saved version": "النسخة المحفوظة",
@@ -121,8 +120,8 @@ AR = {
     "accepted": "مقبولة",
     "identity threshold": "خارج حد تطابق الشخصية",
     "looks like another character": "تشبه شخصية أخرى",
-    "too small or too narrow": "صغيرة أو ضيقة جدًا",
-    "another character in crop": "شخصية أخرى داخل القص",
+    "character too small in the scene": "الشخصية صغيرة جدًا في المشهد",
+    "another character in the scene": "شخصية أخرى في المشهد",
     "dark or faded": "مظلمة أو باهتة",
     "text on screen": "كتابة على الصورة",
     "chibi or blurry": "رسم تشيبي أو ضبابي",
@@ -144,8 +143,6 @@ AR = {
     "⏳ Stopping and undoing...": "⏳ جارٍ الإيقاف والتراجع...",
 
     "The file or folder doesn't exist": "الملف أو المجلد غير موجود",
-    "There are results with this name already. Tick “Replace earlier results” to build it again, or pick another name":
-        "توجد نتائج سابقة بهذا الاسم. فعّل «استبدال نتائج سابقة» لإعادة البناء، أو اختر اسمًا آخر",
     "The character wasn't found. Raise “Match threshold” a little or pick other clusters":
         "لم يُعثر على الشخصية. ارفع «حد التطابق» قليلًا أو اختر مجموعات أخرى",
     "No characters were found in the episodes": "لم تُكتشف أي شخصيات في الحلقات",
@@ -154,8 +151,6 @@ AR = {
         "رقم مجموعة غير موجود. الأرقام تتغير بعد كل مسح، حدّث الصفحة",
     "There are no images in the uploaded references": "لا توجد صور في المراجع المرفوعة",
     "Not enough clear views to cluster": "لا توجد مشاهد واضحة كافية للتجميع",
-    "This project's frames were deleted to save space. To build a new character, scan the episodes in a new project":
-        "إطارات هذا المشروع حُذفت لتوفير المساحة. لبناء شخصية جديدة امسح الحلقات في مشروع جديد",
     "The cluster didn't split this strongly, lower “Split strength”": "لم تنقسم المجموعة بهذه الشدة، اخفض «شدة التقسيم»",
     "The cluster is too small to split": "المجموعة أصغر من أن تُقسم",
 
@@ -170,14 +165,14 @@ AR = {
         "اكتشاف الشارة (OP/ED) تلقائيًا: المقاطع المتكررة بين الحلقات تُستبعد. "
         "مع حلقة واحدة تُستخدم الحلقة المجاورة في المجلد للمقارنة",
     "More times to ignore (optional)": "أوقات إضافية تُتجاهل يدويًا (اختياري)",
-    "Advanced settings": "إعدادات متقدمة",
+    "⚙️ Advanced settings": "⚙️ إعدادات متقدمة",
     "You rarely need these: the defaults suit most anime.": "نادرًا ما تحتاج هذه الإعدادات، فالقيم الافتراضية تناسب أغلب الأنمي.",
     "**Opening and ending (OP/ED)**": "**الشارة (OP/ED)**",
     "Shortest OP/ED (seconds)": "أقصر شارة (ثانية)",
     "A part repeated between episodes is left out only if it's at least this long. Lower it if a short OP/ED isn't "
     "found.":
         "يُستبعد المقطع المتكرر بين الحلقات إن كان بهذا الطول أو أطول. اخفضه إن لم تُكتشف شارة قصيرة.",
-    "Find the OP/ED again in the scanned episodes": "أعد اكتشاف الشارة في الحلقات الممسوحة",
+    "🔁 Find the OP/ED again in the scanned episodes": "🔁 أعد اكتشاف الشارة في الحلقات الممسوحة",
     "**Which frames are kept** (for new scans)": "**الإطارات المحفوظة** (للمسح القادم)",
     "Time between kept frames (seconds)": "الوقت بين الإطارات المحفوظة (ثانية)",
     "Lower = more frames from each scene. Higher = fewer frames and a faster scan.":
@@ -191,17 +186,12 @@ AR = {
     "Frames": "إطارات",
     "Left out automatically": "مستبعد تلقائيًا",
     "Episodes scanned in this project": "الحلقات الممسوحة في المشروع",
-    "💾 Disk space": "💾 المساحة على القرص",
+    "💽 Disk space": "💽 المساحة على القرص",
     "**Safe clean** deletes only what the program will never use again: frames with no character, frames inside the "
     "OP/ED, thumbnails and leftover copies. Nothing you need is lost.":
         "**التنظيف الآمن** يحذف فقط ما لن يستخدمه البرنامج أبدًا: الإطارات التي لا شخصيات فيها، وإطارات الشارة، "
         "والصور المصغّرة، والنسخ الزائدة. لا يضيع شيء تحتاجه.",
     "🧹 Safe clean": "🧹 تنظيف آمن",
-    "**Delete all frames** frees the most space and keeps your finished images, but after it this project can't be "
-    "built or re-clustered. Do it only when you're done with the project.":
-        "**حذف كل الإطارات** يوفّر أكبر مساحة وتبقى صورك النهائية، لكن بعده لا يمكن البناء أو إعادة التجميع في هذا "
-        "المشروع. افعله فقط بعد أن تنتهي من المشروع.",
-    "I'm done with this project: delete all its frames": "انتهيت من هذا المشروع: احذف كل إطاراته",
     "🗑 Delete all frames": "🗑 حذف كل الإطارات",
     "Log": "السجل",
     "Enter at least one episode path or a folder of episodes": "أدخل مسار حلقة واحدة على الأقل أو مجلد حلقات",
@@ -217,10 +207,7 @@ AR = {
     "Saved analysis for rebuilds": "التحليل المحفوظ لإعادة البناء",
     "Character {name}": "الشخصية {name}",
     "**Project size: {size}**": "**حجم المشروع: {size}**",
-    " — frames deleted, no more builds": " — الإطارات محذوفة، لا يمكن البناء من جديد",
     "| Part | Size |": "| الجزء | الحجم |",
-    "Tick the confirmation first: deleting all frames is final and stops any rebuild":
-        "فعّل خانة التأكيد أولًا: حذف كل الإطارات نهائي ويمنع إعادة البناء",
 
     "2. Pick the character": "٢. اختيار الشخصية",
     "Click a character's image to select it, click again to unselect. If the character shows up in more than one "
@@ -229,7 +216,7 @@ AR = {
         "(زي مختلف مثلًا) فاختر كل مجموعاتها. **الأرقام تتغير بعد كل مسح.**",
     "Characters found": "الشخصيات المكتشفة",
     "{id}  ·  {n} views": "{id}  ·  {n} ظهور",
-    "Fix the clusters (two characters mixed, or one split up)": "تصحيح المجموعات (شخصيتان مختلطتان، أو شخصية مقسّمة)",
+    "🧩 Fix the clusters (two characters mixed, or one split up)": "🧩 تصحيح المجموعات (شخصيتان مختلطتان، أو شخصية مقسّمة)",
     "**One character in several clusters?** Usually there's nothing to fix: just select all of them.\n\n**Two "
     "characters in one cluster?** Select only that cluster, then split it:":
         "**شخصية في أكثر من مجموعة؟** غالبًا لا يلزم تصحيح شيء: اختر كل مجموعاتها فقط.\n\n"
@@ -245,7 +232,7 @@ AR = {
         "أقل = مجموعات أكثر وأصغر، فتنفصل الشخصيات المتشابهة. أعلى = مجموعات أقل وأكبر، فتجتمع الشخصية المقسّمة.",
     "Hide clusters with fewer views than": "إخفاء المجموعات التي ظهورها أقل من",
     "Small clusters are usually background characters.": "المجموعات الصغيرة غالبًا لشخصيات ثانوية في الخلفية.",
-    "Re-cluster the whole project": "أعد تجميع المشروع كله",
+    "🔁 Re-cluster the whole project": "🔁 أعد تجميع المشروع كله",
     "✂ Split the selected cluster": "✂ قسّم المجموعة المحددة",
     "Selected clusters": "المجموعات المختارة",
     "Cluster preview": "معاينة المجموعة",
@@ -253,11 +240,41 @@ AR = {
         "أو/و: صور مرجعية للشخصية (اختياري، مفيد للشخصيات الثانوية)",
     "Trigger word (the character's name)": "كلمة التفعيل (اسم الشخصية)",
     "Anime name as a tag (optional)": "اسم الأنمي كوسم (اختياري)",
-    "Enlarge small images with an anime upscaler (CDC): cleaner lines than plain resizing, and small crops "
-    "become usable":
-        "تكبير الصور الصغيرة بنموذج مخصص للأنمي (CDC): خطوط أوضح من التكبير العادي، ويُنقذ القصّات الصغيرة",
-    "Enlarge every image smaller than this to it (pixels; use your training resolution)":
-        "كبّر كل صورة أصغر من هذا الحجم إليه (بكسل؛ اجعله بدقة التدريب)",
+    "Enlarge small scenes with an anime upscaler: cleaner lines than plain resizing":
+        "تكبير المشاهد الصغيرة بموديل مخصص للأنمي: خطوط أوضح من التكبير العادي",
+    "Upscaling model": "موديل التكبير",
+    "Model version": "نسخة الموديل",
+    "Automatic (recommended)": "تلقائي (يُنصح به)",
+    'Automatic uses 2x for enlargements up to double and 4x above. Choosing one version downloads only that version.':
+        "يستخدم «تلقائي» نسخة 2x للتكبير حتى الضعف و4x لما فوقه. واختيار نسخة واحدة يحمّل هذه النسخة فقط.",
+    "Press ! next to a model to read about it.": "اضغط ! بجانب أي موديل لتقرأ عنه.",
+    "🗑 Delete this model to free space": "🗑 احذف هذا الموديل لتوفير المساحة",
+    "✅ {name} is downloaded ({size} MB).": "✅ {name} محمَّل ({size} MB).",
+    "⬇ {name} isn't downloaded yet ({size} MB). It's downloaded when you choose it.":
+        "⬇ {name} غير محمَّل بعد ({size} MB). يُحمَّل عند اختياره.",
+    "Downloading {name}...": "جارٍ تحميل {name}...",
+    "Couldn't download {name}. Check the internet connection and try again.":
+        "تعذّر تحميل {name}. تحقق من الاتصال بالإنترنت وحاول مجددًا.",
+    "Deleted {name} and freed {size} MB. It's downloaded again when you choose it.":
+        "حُذف {name} وتحرّرت {size} MB. يُحمَّل من جديد عند اختياره.",
+    "Pick a model": "اختر موديلًا",
+    'waifu2x (swin_unet, art) by nagadomi, the ONNX version published by deepghs. It enlarges without redrawing: it removes compression noise and sharpens the least, so the scene looks like the original. Recommended. Two versions, 2x (17 MB) and 4x (19 MB); Automatic uses 2x for enlargements up to double and 4x above. License: MIT.':
+        'waifu2x (swin_unet، نسخة الرسوم) من nagadomi، بنسخة ONNX التي نشرتها deepghs. يكبّر الصورة دون أن يعيد رسمها: يزيل تشويش الضغط ويضيف أقل قدر من الحدة، فيبقى المشهد شبيهًا بالأصل. هو الموصى به. له نسختان، 2x (17 MB) و4x (19 MB)؛ والخيار «تلقائي» يستخدم 2x للتكبير حتى الضعف و4x لما فوقه. الترخيص: MIT.',
+    'Real-ESRGAN animevideov3 by Tencent ARC, made for anime video; ONNX conversion from Hugging Face (the original is a PyTorch file). Cleaner, slightly crisper lines than waifu2x and the fastest. 4x only, 2.5 MB to download. License: BSD-3-Clause.':
+        'Real-ESRGAN animevideov3 من Tencent ARC، مصمم لفيديو الأنمي؛ نسخة ONNX محوّلة من Hugging Face (الأصل ملف PyTorch). خطوطه أنظف وأوضح قليلًا من waifu2x، وهو الأسرع. نسخة 4x فقط، والتحميل 2.5 MB. الترخيص: BSD-3-Clause.',
+    "AnimeSharp by Kim2091, from the author's own page. It sharpens lines strongly, which can look too sharp on soft anime. Two versions, 2x (V3, 34 MB) and 4x (34 MB); Automatic uses 2x for enlargements up to double and 4x above. License: CC BY-NC-SA 4.0, non-commercial use only.":
+        'AnimeSharp من Kim2091، من صفحة المؤلف نفسه. يزيد حدة الخطوط كثيرًا، وقد تبدو حادة أكثر من اللازم في الأنمي الناعم. له نسختان، 2x (V3، 34 MB) و4x (34 MB)؛ والخيار «تلقائي» يستخدم 2x للتكبير حتى الضعف و4x لما فوقه. الترخيص: CC BY-NC-SA 4.0، للاستخدام غير التجاري فقط.',
+    'APISR (CVPR 2024) by Kiteretsu77, ONNX conversion by Xenova (the original is a PyTorch file). It redraws the image the way anime is produced: thick dark lines and stronger contrast. It looks clean, but it changes the drawing style, and the LoRA would learn that style. Two versions, 2x (18 MB) and 4x (6.5 MB); Automatic uses 2x for enlargements up to double and 4x above. License: GPL-3.0.':
+        'APISR (CVPR 2024) من Kiteretsu77، نسخة ONNX حوّلها Xenova (الأصل ملف PyTorch). يعيد رسم الصورة بطريقة إنتاج الأنمي: خطوط داكنة سميكة وتباين أقوى. تبدو النتيجة نظيفة، لكنه يغيّر أسلوب الرسم، وستتعلم LoRA هذا الأسلوب. له نسختان، 2x (18 MB) و4x (6.5 MB)؛ والخيار «تلقائي» يستخدم 2x للتكبير حتى الضعف و4x لما فوقه. الترخيص: GPL-3.0.',
+    'CDC_anime by 7eu7d7: the CDC enlarging method (Component Divide-and-Conquer, 2020) trained on anime, in the ONNX version published by deepghs. ALDS used it for upscaling up to version 0.4.1. It adds grain and can distort small details such as eyes and lines, and it needs much more graphics memory than the other models. 4x only, 160 MB to download. License: MIT.':
+        'CDC_anime من 7eu7d7: طريقة التكبير CDC (Component Divide-and-Conquer، عام 2020) مدرَّبة على الأنمي، بنسخة ONNX التي نشرتها deepghs. استخدمه ALDS للتكبير حتى الإصدار 0.4.1. يضيف حبيبات وقد يشوّه التفاصيل الصغيرة مثل العيون والخطوط، ويحتاج ذاكرة من كرت الشاشة أكبر بكثير من باقي الموديلات. نسخة 4x فقط، والتحميل 160 MB. الترخيص: MIT.',
+    "waifu2x (closest to the original)": "waifu2x (الأقرب إلى الأصل)",
+    "Real-ESRGAN animevideov3 (crisper lines)": "Real-ESRGAN animevideov3 (خطوط أوضح)",
+    "AnimeSharp (sharp)": "AnimeSharp (حاد)",
+    "APISR (redraws lines, changes the style)": "APISR (يعيد رسم الخطوط ويغيّر الأسلوب)",
+    "CDC (adds grain, can distort details)": "CDC (يضيف حبيبات وقد يشوّه التفاصيل)",
+    "Enlarge every scene smaller than this to it (pixels; use your training resolution)":
+        "كبّر كل مشهد أصغر من هذا الحجم إليه (بكسل؛ اجعله بدقة التدريب)",
     "The defaults suit most anime. If the result isn't right, change one setting and build again: rebuilding is "
     "fast.":
         "القيم الافتراضية تناسب أغلب الأنمي. إن لم تعجبك النتيجة فغيّر إعدادًا واحدًا وابنِ من جديد، فإعادة البناء "
@@ -268,13 +285,13 @@ AR = {
     "Duplicate removal": "إزالة التكرار",
     "Lower = removes more look-alike images. Higher = keeps more similar ones.":
         "أقل = يحذف صورًا متشابهة أكثر. أعلى = يُبقي صورًا متشابهة أكثر.",
-    "Smallest image size (pixels)": "أصغر حجم للصورة (بكسل)",
-    "Smaller crops are left out. Turning on enlarging lowers it to 320.":
-        "القصّات الأصغر تُستبعد. تفعيل التكبير يخفضه إلى 320.",
+    "Smallest character in the scene (% of the frame height)": "أصغر حجم للشخصية في المشهد (% من ارتفاع الإطار)",
+    "Scenes where the character is smaller are left out. Only scenes where the character is alone are used.":
+        "تُستبعد المشاهد التي تكون فيها الشخصية أصغر. وتُستخدم فقط المشاهد التي تظهر فيها الشخصية وحدها.",
     "Follow the character within a shot": "تتبّع الشخصية داخل اللقطة",
     "1 = off (recommended). Higher takes more frames from the same shot, but may let other characters in.":
         "1 = متوقف (يُنصح به). أعلى = إطارات أكثر من اللقطة نفسها، لكن قد تدخل شخصيات أخرى.",
-    "Tagging model": "نموذج الوسوم",
+    "Tagging model": "موديل الوسوم",
     "EVA02_Large is the most accurate; the others are faster.": "EVA02_Large الأدق، والبقية أسرع.",
     "Options": "خيارات",
     "Leave out other characters, using the clusters you didn't pick":
@@ -284,14 +301,11 @@ AR = {
     "Put anime screencap at the start of every caption": "وسم anime screencap في أول كل وصف",
     "Keep hair and eye tags in the captions": "إبقاء صفات الشعر والعيون في الوصف",
     "Keep images with text on screen": "إبقاء الصور التي فيها نصوص",
-    "Keep images crowded with other characters": "إبقاء الصور المزدحمة بشخصيات أخرى",
     "Keep chibi and blurry drawings": "إبقاء الرسم المصغّر (chibi) والضبابي",
     "Keep black-and-white and sepia images (flashbacks)": "إبقاء الصور بالأبيض والأسود والبني (مشاهد الذكريات)",
     "Save the left-out images in a {folder} folder": "حفظ الصور المستبعدة في مجلد {folder}",
     "Analyse from scratch, ignore the saved analysis (much slower, rarely needed)":
         "إعادة التحليل من الصفر وتجاهل المحفوظ (أبطأ بكثير، نادرًا ما تحتاجه)",
-    "Replace earlier results with the same name (clears your earlier review)":
-        "استبدال نتائج سابقة بنفس الاسم (يمسح مراجعتك السابقة)",
     "▶ Build the image set": "▶ ابنِ مجموعة الصور",
     "Report": "التقرير",
     "Type the trigger word (the character's name)": "اكتب كلمة التفعيل (اسم الشخصية)",
@@ -313,14 +327,6 @@ AR = {
     "Head": "الرأس",
 
     "3. Review": "٣. المراجعة",
-    "Remove every image that isn't the character, starting with the ones marked ⚠. **N** (not this character): "
-    "an image of another character - the program learns from it, marks what looks like it with 🚫 and leaves it "
-    "out of every later build. **Delete**: a bad image of the character itself; nothing is learned. "
-    "**← →** to move, **Ctrl+Z** to undo.":
-        "أزل كل صورة ليست للشخصية، وابدأ بالصور المعلّمة ⚠. "
-        "**N** (ليست الشخصية): لصورة شخصية أخرى، فيتعلّم منها البرنامج: يعلّم ما يشبهها بـ🚫 "
-        "ويستبعده في كل بناء قادم. **Delete**: لصورة سيئة للشخصية نفسها، ولا يتعلّم منها شيئًا. "
-        "**← →** للتنقل، و**Ctrl+Z** للتراجع.",
     "Character": "الشخصية",
     "Show": "عرض",
     "All": "الكل",
@@ -334,8 +340,9 @@ AR = {
     "**{i} / {n}** — {shot} · {angle}": "**{i} / {n}** — {shot} · {angle}",
     " — ⚠ needs a check": " — ⚠ تحتاج تأكيدًا",
     " — 🚫 looks like an image you rejected as another character": " — 🚫 تشبه صورة رفضتها كشخصية أخرى",
-    "Crop: {crop} — episode {ep} at {at} — match score {score} (lower is better) — sharpness {sharp}":
-        "القص: {crop} — الحلقة {ep} عند {at} — درجة التطابق {score} (الأقل أفضل) — الحدة {sharp}",
+    "Image: {crop} — episode {ep} at {at} — match score {score} (lower is better) — sharpness {sharp}":
+        "الصورة: {crop} — الحلقة {ep} عند {at} — درجة التطابق {score} (الأقل أفضل) — الحدة {sharp}",
+    "Whole scene": "المشهد كاملًا",
     " — upscaled ×{f}": " — مُكبّرة ×{f}",
     "Pick a character.": "اختر شخصية.",
     "**{n}** images — **{r}** to check — deleted: {d}": "**{n}** صورة — منها **{r}** للمراجعة — المحذوفة: {d}",
@@ -349,7 +356,7 @@ AR = {
     "💾 Save caption": "💾 حفظ الوصف",
     "Wrong group? Move it to": "تصنيف خاطئ؟ انقلها إلى",
     "↪ Move": "↪ نقل",
-    "Forget all images rejected as another character": "نسيان كل الصور المرفوضة كشخصية أخرى",
+    "🧹 Forget all images rejected as another character": "🧹 نسيان كل الصور المرفوضة كشخصية أخرى",
     "No image selected": "لا توجد صورة محددة",
     "This character was built by an older version of the program: build it again once so it can learn from "
     "rejections. Or remove the image with “Bad image”.":
@@ -417,7 +424,7 @@ AR = {
     "**{n} images** will be saved with {c} caption files.": "**سيُحفظ {n} صورة** مع {c} ملف وصف (caption).",
     "- Trigger word: `{name}`": "- كلمة التفعيل: `{name}`",
     " — anime name: `{series}`": " — اسم الأنمي: `{series}`",
-    "- Upscaled with the anime model: {n}": "- مُكبّرة بنموذج الأنمي: {n}",
+    "- Upscaled with {model}: {n}": "- مُكبّرة بموديل {model}: {n}",
     "- Outfit {id} `{token}`: {n} images ({tags})": "- زي {id} `{token}`: {n} صورة ({tags})",
     "- ⚠ **{n} images are still marked to check**, and will be saved with the rest. Check them in tab 3 first.":
         "- ⚠ **{n} صورة ما زالت معلّمة للمراجعة**، وستُحفظ معها. راجعها أولًا في التبويب ٣.",

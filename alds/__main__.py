@@ -2,7 +2,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from .common import Project, parse_ranges, setup_runtime
+from .common import DEFAULT_MIN_HEIGHT, Project, parse_ranges, setup_runtime
+from .upscale import DEFAULT as DEFAULT_UPSCALER, LABELS as UPSCALERS
 
 
 def main(argv=None):
@@ -36,7 +37,7 @@ def main(argv=None):
     p.add_argument("--cluster", type=int, required=True)
     p.add_argument("--cut", type=float, default=0.14, help="tighter than the clustering cut (0.2)")
 
-    p = sub.add_parser("build", help="build the dataset for one character")
+    p = sub.add_parser("build", help="build the dataset for one character from the scenes where it is alone")
     p.add_argument("-p", "--project", required=True)
     p.add_argument("-n", "--name", required=True, help="trigger word, also the output folder name")
     p.add_argument("--cluster", type=int, nargs="*", default=[], help="cluster number(s) from scan")
@@ -45,30 +46,33 @@ def main(argv=None):
     p.add_argument("--relax", type=float, default=1.0,
                    help="enable shot tracking: also take overlapping boxes in the same shot scoring under "
                         "threshold*relax (e.g. 1.3). Off by default: it can pull in wrong characters")
-    p.add_argument("--min-size", type=int,
-                   help="min crop size, sqrt(width*height) in px (default 448, or 320 with --upscale)")
+    p.add_argument("--min-height", type=float, default=DEFAULT_MIN_HEIGHT,
+                   help=f"smallest character height as a share of the frame height (default {DEFAULT_MIN_HEIGHT})")
     p.add_argument("--upscale", action="store_true",
-                   help="enlarge small crops with an anime upscaler (CDC) instead of training on them small")
+                   help="enlarge scenes smaller than --upscale-to with an anime upscaler")
     p.add_argument("--upscale-to", type=int, default=1024, help="target size for --upscale, sqrt(w*h) in px")
+    p.add_argument("--upscaler", choices=list(UPSCALERS), default=DEFAULT_UPSCALER,
+                   help="upscaling model: " + "; ".join(f"{k} = {v}" for k, v in UPSCALERS.items()))
+    p.add_argument("--upscaler-version", choices=("auto", "2", "4"), default="auto",
+                   help="model version: auto uses 2x for enlargements up to double and 4x above")
     p.add_argument("--sim", type=float, default=0.80,
                    help="near-duplicate cutoff (WD14 embedding cosine; lower = stricter dedup)")
-    p.add_argument("--keep-text", action="store_true", help="keep crops with on-screen text (credits, titles)")
-    p.add_argument("--keep-crowded", action="store_true", help="keep crops where another character takes up a big part")
+    p.add_argument("--keep-text", action="store_true", help="keep scenes with on-screen text (credits, titles)")
     p.add_argument("--series", help="series tag to put after the trigger, e.g. 'fairy tail'")
     p.add_argument("--keep-core", action="store_true", help="keep hair/eye/body tags in captions")
     p.add_argument("--no-screencap-tag", action="store_true", help="don't prefix captions with 'anime screencap'")
     p.add_argument("--tagger", default="EVA02_Large", help="WD14 model: EVA02_Large, SwinV2_v3, ConvNext_v3, ViT_v3")
-    p.add_argument("--keep-offmodel", action="store_true", help="keep crops tagged chibi / super deformed / blurry")
-    p.add_argument("--keep-mono", action="store_true", help="keep black-and-white and sepia crops (flashbacks)")
+    p.add_argument("--keep-offmodel", action="store_true", help="keep scenes tagged chibi / super deformed / blurry")
+    p.add_argument("--keep-mono", action="store_true", help="keep black-and-white and sepia scenes (flashbacks)")
     p.add_argument("--no-auto-reject", action="store_true",
                    help="don't use the other clusters to leave out other characters")
     p.add_argument("--no-outfits", action="store_true", help="don't add per-outfit tokens to captions")
-    p.add_argument("--save-dropped", action="store_true", help="also save filtered-out crops to _dropped/<reason>/")
+    p.add_argument("--save-dropped", action="store_true", help="also save left-out scenes to _dropped/<reason>/")
     p.add_argument("--overwrite", action="store_true", help="save a version, rebuild and carry matching reviews forward")
     p.add_argument("--preview", type=int, nargs="?", const=12, default=0, choices=range(1, 61), metavar="FRAMES",
                    help="preview filters on 1-60 sampled frames without replacing the built images (default 12)")
     p.add_argument("--fresh", action="store_true",
-                   help="ignore the saved crop analysis (tags, OCR, faces, upscales) and redo it all")
+                   help="ignore the saved analysis (tags, OCR, faces, upscales) and redo it all")
 
     p = sub.add_parser("reject", help="mark built images as another character (removed and learned); "
                                       "without images it lists the remaining ones that look like them")
@@ -131,6 +135,11 @@ def main(argv=None):
     action.add_argument("--compare", metavar="VERSION", help="compare a saved version with the current result")
     action.add_argument("--delete", metavar="VERSION", help="delete a saved version for good")
 
+    p = sub.add_parser("upscalers", help="list the upscaling models; download one, or delete one to free space")
+    action = p.add_mutually_exclusive_group()
+    action.add_argument("--download", choices=list(UPSCALERS), metavar="MODEL", help="download a model now")
+    action.add_argument("--delete", choices=list(UPSCALERS), metavar="MODEL", help="delete a downloaded model")
+
     p = sub.add_parser("gui", help="open the graphical interface in the browser")
     p.add_argument("--port", type=int, default=7860)
     p.add_argument("--no-browser", action="store_true", help="don't open the browser automatically")
@@ -139,6 +148,8 @@ def main(argv=None):
     if a.cmd == "gui":
         from .gui import launch
         return launch(a.port, not a.no_browser)
+    if a.cmd == "upscalers":
+        return run_upscalers(a)
     project = Project(a.project)
     if a.cmd not in ("export", "tags", "outfits", "clean", "restore-frames", "versions", "confirm"):
         setup_runtime()
@@ -176,14 +187,18 @@ def run_command(project, a):
             split_cluster(project, a.cluster, a.cut)
     elif a.cmd == "build":
         from .build import check_overwrite, run_build
-        min_size = a.min_size or (320 if a.upscale else 448)
+        from .upscale import versions
+        if a.upscaler_version != "auto" and int(a.upscaler_version) not in versions(a.upscaler):
+            raise SystemExit(f"{a.upscaler} has only a {versions(a.upscaler)[0]}x version")
+        if not 0 < a.min_height <= 1:
+            raise SystemExit("--min-height is a share of the frame height, between 0 and 1 (e.g. 0.5)")
         if not a.preview:
             check_overwrite(project, a.name, a.overwrite)
         with txn.preview_txn(project, a.name) if a.preview else txn.build_txn(project, a.name):
-            run_build(project, a.name, a.cluster, a.ref, a.threshold, a.relax, min_size, a.sim, a.series,
-                      a.keep_core, not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_crowded, a.keep_offmodel,
+            run_build(project, a.name, a.cluster, a.ref, a.threshold, a.relax, a.min_height, a.sim, a.series,
+                      a.keep_core, not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_offmodel,
                       a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh,
-                      not a.no_auto_reject, a.keep_mono, a.preview)
+                      not a.no_auto_reject, a.keep_mono, a.preview, a.upscaler, a.upscaler_version)
     elif a.cmd == "restore-frames":
         from .restore import restore_frames
         restore_frames(project, a.videos_dir)
@@ -245,6 +260,19 @@ def run_command(project, a):
     elif a.cmd == "clean":
         from .cleanup import clean
         clean(project, "all" if a.all else "safe")
+
+
+def run_upscalers(a):
+    from . import upscale
+    if a.download:
+        upscale.download(a.download)
+        print(f"[upscalers] downloaded {a.download}")
+    elif a.delete:
+        print(f"[upscalers] deleted {a.delete}, freed {upscale.megabytes(upscale.delete(a.delete))} MB")
+    for key, label in UPSCALERS.items():
+        size = upscale.downloaded_size(key)
+        state = f"downloaded, {upscale.megabytes(size)} MB" if size else f"not downloaded ({upscale.SIZE_MB[key]} MB)"
+        print(f"  {key:<13} {state:<28} {label}")
 
 
 def image_stem(name):
