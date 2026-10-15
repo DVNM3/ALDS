@@ -193,11 +193,11 @@ def run_outfits(project, name, say=print):
         by_frame, by_shot = {}, {}
         for it, p, _ in rows:
             n = assign.get(p.stem)
-            if n:
+            if n and it.get("vid") is not None:
                 by_frame.setdefault((it["vid"], it["t"]), Counter())[n] += 1
                 by_shot.setdefault((it["vid"], shot_of.get((it["vid"], it["t"]))), Counter())[n] += 1
         for it, p, _ in rows:
-            if p.stem not in assign:
+            if p.stem not in assign and it.get("vid") is not None:
                 c = by_frame.get((it["vid"], it["t"])) or by_shot.get((it["vid"], shot_of.get((it["vid"], it["t"]))))
                 if c and len(c) == 1:
                     assign[p.stem] = next(iter(c))

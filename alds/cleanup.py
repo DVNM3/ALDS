@@ -32,7 +32,8 @@ def disk_usage(project):
     if project.chars_dir.exists():
         for c in sorted(p for p in project.chars_dir.iterdir() if p.is_dir()):
             rows.append((f"characters/{c.name}", size(c)))
-    return rows + [("cache", size(project.dir / "cache")), ("previews", size(project.previews_dir))]
+    return rows + [("cache", size(project.dir / "cache")), ("previews", size(project.previews_dir)),
+                   ("episodes", size(project.dir / "episodes"))]
 
 
 def fmt_bytes(n: float) -> str:

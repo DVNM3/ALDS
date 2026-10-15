@@ -26,8 +26,6 @@ def t(text: str, **values) -> str:
 
 
 AR = {
-    "Settings or your review changed. Run the preview again to see the new result.":
-        "تغيّرت الإعدادات أو مراجعتك. شغّل المعاينة مجددًا لترى النتيجة الجديدة.",
     "✅ Definitely this character": "✅ هذه الشخصية بالتأكيد",
     "✅ Confirmed images and the effect of your review": "✅ الصور المؤكدة وأثر مراجعتك",
     "Confirm clear images from different angles and in different outfits. Images marked ❓ come first under “All”.":
@@ -49,13 +47,6 @@ AR = {
     "✅ You confirmed this character.": "✅ أكّدتَ هوية هذه الشخصية.",
     "❓ Check who this is: a weak match, or close to another character.":
         "❓ تحقق من هويتها: التطابق ضعيف، أو قريب من شخصية أخرى.",
-    "- Images marked ❓ (unsure who it is) and ⚠ (to check) come first: look at them before the rest.\n- **✅ "
-    "Definitely this character** confirms a clear image, and the program learns from it.\n- **🚫 N** removes another "
-    "character and learns to leave out what looks like it. **🗑 Delete** removes a bad image.\n- **← →** move between "
-    "images, **Ctrl+Z** undoes a removal.":
-        "- الصور المعلّمة ❓ (هوية غير مؤكدة) و⚠ (للمراجعة) تظهر أولًا: راجعها قبل غيرها.\n- **✅ هذه الشخصية "
-        "بالتأكيد** يؤكد صورة واضحة، فيتعلم منها البرنامج.\n- **🚫 N** يحذف صورة شخصية أخرى ويتعلم استبعاد ما يشبهها. "
-        "**🗑 Delete** يحذف صورة سيئة.\n- **← →** للتنقل بين الصور، و**Ctrl+Z** للتراجع عن الحذف.",
     "Gap to the closest other character: {margin} (bigger = clearer).":
         "الفارق عن أقرب شخصية أخرى: {margin} (الأكبر أوضح).",
     " · {n} confirmed": " · {n} مؤكدة",
@@ -75,9 +66,6 @@ AR = {
     "new match": "مطابقة جديدة",
     "no longer matched": "لم يعد مطابقًا",
     "different person": "تغيّر الشخص المختار",
-    "This character is already built. Tick “Build this character again”, or type another name.":
-        "هذه الشخصية مبنية من قبل. فعّل «أعد بناء الشخصية»، أو اكتب اسمًا آخر.",
-    "Restore this project's frames in tab 1 before building again.": "استعد إطارات المشروع من التبويب ١ قبل إعادة البناء.",
     "Build previews": "معاينات البناء",
     " — restore frames before building again": " — استعد الإطارات قبل إعادة البناء",
     "Confirm deleting the frames. The original episodes are needed to restore them.":
@@ -89,8 +77,6 @@ AR = {
         "**استعادة الإطارات:** استرجع الإطارات المفقودة من الحلقات الأصلية. تبقى مجموعات الشخصيات والصور المراجعة كما هي.",
     "Episodes folder if moved (optional)": "مجلد الحلقات إن نُقلت (اختياري)",
     "↶ Restore missing frames": "↶ استعد الإطارات المفقودة",
-    "Build this character again (the current result is saved as a version, and your review carries over)":
-        "أعد بناء الشخصية (تُحفظ النتيجة الحالية كنسخة، وتنتقل مراجعتك)",
     "🔎 Preview these settings": "🔎 عاين هذه الإعدادات",
     "🔎 Settings preview": "🔎 معاينة الإعدادات",
     "Preview 12 frames before building. Your finished images stay as they are.":
@@ -157,15 +143,6 @@ AR = {
     "The cluster is too small to split": "المجموعة أصغر من أن تُقسم",
 
     "1. Scan episodes": "١. فحص الحلقات",
-    "Paste one episode path per line, or the path of a whole folder. "
-    "(In Windows Explorer: Shift + right-click the file → Copy as path)":
-        "الصق مسار حلقة في كل سطر، أو مسار مجلد كامل. "
-        "(في مستكشف ويندوز: Shift + زر الفأرة الأيمن على الملف ← Copy as path)",
-    "Episodes": "الحلقات",
-    "Find the OP/ED automatically: parts repeated between episodes are left out. With one episode, the next "
-    "episode in its folder is used for the comparison":
-        "اكتشاف الشارة (OP/ED) تلقائيًا: المقاطع المتكررة بين الحلقات تُستبعد. "
-        "مع حلقة واحدة تُستخدم الحلقة المجاورة في المجلد للمقارنة",
     "More times to ignore (optional)": "أوقات إضافية تُتجاهل يدويًا (اختياري)",
     "⚙️ Advanced settings": "⚙️ إعدادات متقدمة",
     "You rarely need these: the defaults suit most anime.": "نادرًا ما تحتاج هذه الإعدادات، فالقيم الافتراضية تناسب أغلب الأنمي.",
@@ -188,7 +165,6 @@ AR = {
     "Frames": "إطارات",
     "Left out automatically": "مستبعد تلقائيًا",
     "Episodes scanned in this project": "الحلقات المفحوصة في المشروع",
-    "💽 Disk space": "💽 المساحة على القرص",
     "**Safe clean** deletes only what the program will never use again: frames with no character, frames inside the "
     "OP/ED, thumbnails and leftover copies. Nothing you need is lost.":
         "**التنظيف الآمن** يحذف فقط ما لن يستخدمه البرنامج أبدًا: الإطارات التي لا شخصيات فيها، وإطارات الشارة، "
@@ -196,7 +172,6 @@ AR = {
     "🧹 Safe clean": "🧹 تنظيف آمن",
     "🗑 Delete all frames": "🗑 حذف كل الإطارات",
     "Log": "السجل",
-    "Enter at least one episode path or a folder of episodes": "أدخل مسار حلقة واحدة على الأقل أو مجلد حلقات",
     "The times to skip aren't valid. Example: 0:00-1:55, 21:55-24:30":
         "صيغة أوقات التخطي غير صحيحة. مثال: 0:00-1:55, 21:55-24:30",
     "Starting the scan...": "بدء الفحص...",
@@ -212,10 +187,6 @@ AR = {
     "| Part | Size |": "| الجزء | الحجم |",
 
     "2. Pick the character": "٢. اختيار الشخصية",
-    "Click a character's image to select it, click again to unselect. If the character shows up in more than one "
-    "cluster (another outfit, say), pick all of them. **The numbers change after every scan.**":
-        "اضغط على صورة الشخصية لتحديدها، واضغط مرة أخرى لإلغاء التحديد. إن ظهرت الشخصية في أكثر من مجموعة "
-        "(زي مختلف مثلًا) فاختر كل مجموعاتها. **الأرقام تتغير بعد كل فحص.**",
     "Characters found": "الشخصيات المكتشفة",
     "{id}  ·  {n} views": "{id}  ·  {n} ظهور",
     "🧩 Fix the clusters (two characters mixed, or one split up)": "🧩 تصحيح المجموعات (شخصيتان مختلطتان، أو شخصية مقسّمة)",
@@ -238,8 +209,6 @@ AR = {
     "✂ Split the selected cluster": "✂ قسّم المجموعة المحددة",
     "Selected clusters": "المجموعات المختارة",
     "Cluster preview": "معاينة المجموعة",
-    "Reference images of the character (optional, with the clusters or instead of them; useful for side characters)":
-        "صور مرجعية للشخصية (اختياري، مع المجموعات أو بدلًا منها؛ تفيد للشخصيات الثانوية)",
     "Trigger word (the character's name)": "كلمة التفعيل (اسم الشخصية)",
     "Anime name as a tag (optional)": "اسم الأنمي كوسم (اختياري)",
     "Enlarge small scenes with an anime upscaler: cleaner lines than plain resizing":
@@ -310,8 +279,6 @@ AR = {
     "▶ Build the image set": "▶ ابنِ مجموعة الصور",
     "Report": "التقرير",
     "Type the trigger word (the character's name)": "اكتب كلمة التفعيل (اسم الشخصية)",
-    "Pick at least one cluster of images, or upload reference images":
-        "اختر مجموعة واحدة على الأقل من الصور، أو ارفع صورًا مرجعية",
     "Starting the build...": "بدء البناء...",
 
     "Close-up": "لقطة قريبة",
@@ -445,13 +412,10 @@ AR = {
     "choose. That folder is the dataset you train on.":
         "يحفظ الصور بعد المراجعة مع ملفات الوصف في مجلد باسم الشخصية داخل المكان الذي تختاره. "
         "هذا المجلد هو مجموعة البيانات التي تدرّب عليها.",
-    "Save to (paste a folder path; a folder named after the character is made in it)":
-        "مكان الحفظ (الصق مسار مجلد؛ يُنشأ فيه مجلد باسم الشخصية)",
     "💾 Save the images and captions": "💾 احفظ الصور والأوصاف",
     "Shot": "اللقطة",
     "Angle": "الزاوية",
     "Distribution": "التوزيع",
-    "🗑 Delete the project from the program folder (after saving)": "🗑 حذف المشروع من مجلد البرنامج (بعد الحفظ)",
     "I understand deleting the project is final and can't be undone": "أفهم أن حذف المشروع نهائي ولا يمكن التراجع عنه",
     "🗑 Delete the project": "🗑 احذف المشروع",
     "Type or paste the path of the place to save in": "اكتب أو الصق مسار المكان الذي تريد الحفظ فيه",
@@ -559,6 +523,7 @@ AR = {
     "seconds": "ثانية",
     "Episode {ep}: the video file is missing, so it can't be compared": "الحلقة {ep}: ملف الفيديو غير موجود، فلا يمكن مقارنتها",
     "Reading episode {ep} for the comparison (only the first time)...": "قراءة الحلقة {ep} للمقارنة (أول مرة فقط)...",
+    "{name} couldn't be read, so it isn't used for the comparison": "تعذّرت قراءة {name}، فلن تُستخدم للمقارنة",
     "Only one episode, and no other episode in its folder to compare it with":
         "حلقة واحدة فقط، ولا توجد حلقة أخرى في مجلدها للمقارنة",
     "Reading {name} for the comparison (no frames are taken from it)...": "قراءة {name} للمقارنة (لا تؤخذ منها إطارات)...",
@@ -588,4 +553,76 @@ AR = {
     "contain the trigger word {name}.":
         "في AI Toolkit اجعل مجلد البيانات (dataset) هو {folder} وامتداد ملفات الوصف txt. "
         "الأوصاف تحتوي كلمة التفعيل {name} مسبقًا.",
+    "**Delete the project** from the program folder, after saving what you need:":
+        "**حذف المشروع** من مجلد البرنامج، بعد حفظ ما تحتاجه:",
+    "Add them to the image set":
+        "أضفها إلى مجموعة الصور",
+    "Choose a folder of episodes":
+        "اختر مجلد حلقات",
+    "Choose episodes":
+        "اختر الحلقات",
+    "Choose or drop at least one episode, or a folder of episodes":
+        "اختر أو اسحب حلقة واحدة على الأقل، أو مجلد حلقات",
+    "Choose the folder the episodes are in now":
+        "اختر المجلد الذي توجد فيه الحلقات الآن",
+    "Choose where to save the image set":
+        "اختر مكان حفظ مجموعة الصور",
+    "Click the character's image to select it, click again to unselect. If it shows up in more than one cluster (another outfit, say), pick all of them. **The numbers change after every scan.**":
+        "اضغط على صورة الشخصية لتحديدها، واضغط مرة أخرى لإلغاء التحديد. إن ظهرت في أكثر من مجموعة (زي مختلف مثلًا) فاختر كل مجموعاتها. **الأرقام تتغير بعد كل فحص.**",
+    "Drop the episodes here, or click to choose them":
+        "اسحب الحلقات وأفلتها هنا، أو اضغط لاختيارها",
+    "Episodes to scan":
+        "الحلقات التي ستُفحص",
+    "Leave out the OP/ED automatically":
+        "استبعاد الشارة (OP/ED) تلقائيًا",
+    "Looking for the original files on the disk...":
+        "البحث عن الملفات الأصلية على القرص...",
+    "Only video files can be scanned ({types}).":
+        "تُفحص ملفات الفيديو فقط ({types}).",
+    "Parts repeated between episodes are left out. With one episode, the next episode in its folder is used for the comparison.":
+        "المقاطع المتكررة بين الحلقات تُستبعد. مع حلقة واحدة تُستخدم الحلقة المجاورة في المجلد للمقارنة.",
+    "Pick at least one cluster of images, or add your own images of the character":
+        "اختر مجموعة صور واحدة على الأقل، أو أضف صورك الخاصة للشخصية",
+    "Pick at least one cluster to preview. Your own images can help too, with “Use them to find the character in the episodes” ticked.":
+        "اختر مجموعة واحدة على الأقل للمعاينة. وتساعد صورك الخاصة أيضًا إن فعّلت «استخدمها لإيجاد الشخصية في الحلقات».",
+    "Save to (a folder named after the character is made in it)":
+        "مكان الحفظ (يُنشأ فيه مجلد باسم الشخصية)",
+    "Tagged and enlarged like the scenes, and kept with the character for later builds. × removes one.":
+        "تُوسم وتُكبّر مثل المشاهد، وتُحفظ مع الشخصية لكل بناء لاحق. علامة × تحذف صورة.",
+    "Tagging your images":
+        "وسم صورك",
+    "The Windows file window couldn't open. Drop the files on the box instead, or paste the path.":
+        "تعذّر فتح نافذة اختيار الملفات في ويندوز. اسحب الملفات إلى المربع بدلًا من ذلك، أو الصق المسار.",
+    "The copies of episodes you dropped into the program are deleted with it.":
+        "تُحذف معه نسخ الحلقات التي سحبتها إلى البرنامج.",
+    "Use them to find the character in the episodes":
+        "استخدمها لإيجاد الشخصية في الحلقات",
+    "Your own images of the character (optional)":
+        "صورك الخاصة للشخصية (اختياري)",
+    "{n} dropped episodes weren't found on the disk, so a copy is kept in the project ({size}). “📂 Choose episodes” uses them where they are, without a copy.":
+        "لم يُعثر على {n} من الحلقات المسحوبة في القرص، فحُفظت نسخة منها داخل المشروع ({size}). زر «📂 اختر الحلقات» يستخدمها في مكانها دون نسخ.",
+    "{n} of your images added. They skip the filters: every one you add is kept.":
+        "أُضيفت {n} من صورك. لا تمر على المرشّحات: تبقى كل صورة تضيفها.",
+    "{n} of your images help to find the character":
+        "{n} من صورك تساعد في إيجاد الشخصية",
+    "× removes one. You can also paste a path and press Enter.":
+        "علامة × تحذف حلقة. ويمكنك أيضًا لصق مسار ثم ضغط Enter.",
+    "❓ unsure who it is and ⚠ to check come first. **✅** confirms a clear image, and the program learns from it · **🚫 N** removes another character and learns to leave it out · **🗑 Delete** removes a bad image · **← →** next and previous · **Ctrl+Z** undoes a removal":
+        "الصور ❓ (هوية غير مؤكدة) و⚠ (للمراجعة) تظهر أولًا. **✅** يؤكد صورة واضحة فيتعلم منها البرنامج · **🚫 N** يحذف شخصية أخرى ويتعلم استبعاد ما يشبهها · **🗑 Delete** يحذف صورة سيئة · **← →** التالية والسابقة · **Ctrl+Z** للتراجع عن الحذف",
+    "📁 Choose":
+        "📁 اختر",
+    "📁 Choose a folder of episodes":
+        "📁 اختر مجلد حلقات",
+    "📂 Choose episodes":
+        "📂 اختر الحلقات",
+    "📥 Your image: {name} · sharpness {sharp}":
+        "📥 صورتك: {name} · الحدة {sharp}",
+    "🔁 **{name}** is already built. Building again saves the current result as a version first, and your review carries over.":
+        "🔁 **{name}** مبنية من قبل. إعادة البناء تحفظ النتيجة الحالية كنسخة أولًا، وتنتقل مراجعتك.",
+    "🧰 Project upkeep: disk space, frames and deleting":
+        "🧰 صيانة المشروع: المساحة والإطارات والحذف",
+    "Restore this project's frames before building again: tab 5, “🧰 Project upkeep”.":
+        "استعد إطارات المشروع قبل إعادة البناء: التبويب ٥، «🧰 صيانة المشروع».",
+    "Copies of dropped episodes":
+        "نسخ الحلقات المسحوبة",
 }

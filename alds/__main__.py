@@ -2,7 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .common import DEFAULT_MIN_HEIGHT, Project, parse_ranges, setup_runtime
+from .common import DEFAULT_MIN_HEIGHT, OWN_IMAGES, Project, parse_ranges, setup_runtime
 from .upscale import DEFAULT as DEFAULT_UPSCALER, LABELS as UPSCALERS
 
 
@@ -42,6 +42,11 @@ def main(argv=None):
     p.add_argument("-n", "--name", required=True, help="trigger word, also the output folder name")
     p.add_argument("--cluster", type=int, nargs="*", default=[], help="cluster number(s) from scan")
     p.add_argument("--ref", help="folder of reference images of the character (instead of / in addition to clusters)")
+    p.add_argument("--images", metavar="FOLDER",
+                   help="your own images of the character: tagged and enlarged like the scenes and added to the set; "
+                        "they are kept with the character, so later builds use them without this option")
+    p.add_argument("--no-images-find", action="store_true",
+                   help="don't use your own images to find the character in the episodes")
     p.add_argument("--threshold", type=float, help="CCIP match threshold (default 0.13; higher = looser)")
     p.add_argument("--relax", type=float, default=1.0,
                    help="enable shot tracking: also take overlapping boxes in the same shot scoring under "
@@ -194,18 +199,25 @@ def run_command(project, a):
             split_cluster(project, a.cluster, a.cut)
     elif a.cmd == "build":
         from .build import check_overwrite, run_build
+        from .pick import image_files, sync_images
         from .upscale import versions
         if a.upscaler_version != "auto" and int(a.upscaler_version) not in versions(a.upscaler):
             raise SystemExit(f"{a.upscaler} has only a {versions(a.upscaler)[0]}x version")
         if not 0 < a.min_height <= 1:
             raise SystemExit("--min-height is a share of the frame height, between 0 and 1 (e.g. 0.5)")
+        if a.images and not Path(a.images).is_dir():
+            raise SystemExit(f"not found: {a.images}")
         if not a.preview:
             check_overwrite(project, a.name, a.overwrite)
+        own_dir = project.char_dir(a.name) / OWN_IMAGES
         with txn.preview_txn(project, a.name) if a.preview else txn.build_txn(project, a.name):
+            if a.images and not a.preview:
+                sync_images(own_dir, image_files(a.images))
             run_build(project, a.name, a.cluster, a.ref, a.threshold, a.relax, a.min_height, a.sim, a.series,
                       not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_offmodel,
                       a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh,
-                      not a.no_auto_reject, a.keep_mono, a.preview, a.upscaler, a.upscaler_version)
+                      not a.no_auto_reject, a.keep_mono, a.preview, a.upscaler, a.upscaler_version,
+                      Path(a.images) if a.images and a.preview else own_dir, True, not a.no_images_find)
         if not a.preview:
             print(f"\nReview:  {project.char_dir(a.name) / 'sorted'}\n"
                   f"  - check the _review folder first, delete anything that is not {a.name}\n"

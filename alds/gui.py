@@ -18,8 +18,8 @@ from PIL import Image
 
 from . import cancel, txn
 from .cancel import Cancelled
-from .common import (DEFAULT_MIN_HEIGHT, FRAMING, PROJECTS_DIR, VIEW, Project, inside, mmss, parse_ranges,
-                     release_models, safe_name)
+from .common import (DEFAULT_MIN_HEIGHT, FRAMING, OWN_IMAGES, PROJECTS_DIR, VIDEO_EXTS, VIEW, Project, inside,
+                     mmss, parse_ranges, release_models, safe_name)
 from .upscale import DEFAULT as DEFAULT_UPSCALER, LABELS as UPSCALERS
 from .i18n import AR, LANGS, lang, t, use
 
@@ -91,6 +91,15 @@ def do_model(upscale_on, model, version="auto", progress=gr.Progress()):
     return model_status(model, version), gr.update(visible=True)
 
 
+def model_view(upscale_on, model, version="auto"):
+    from .upscale import downloaded_size, versions
+    if not upscale_on or not model:
+        return "", gr.update(visible=False)
+    if version != "auto" and int(version) not in versions(model):
+        version = "auto"
+    return model_status(model, version), gr.update(visible=bool(downloaded_size(model, version)))
+
+
 def delete_model(model, version="auto"):
     from .upscale import delete, megabytes
     if not model:
@@ -129,6 +138,9 @@ html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container 
 html[dir="rtl"] .gradio-container .wrap-inner .icon-wrap { right: auto; left: var(--size-5); }
 .gradio-container .wrap-inner input[role="combobox"] { padding-inline-end: var(--size-6); }
 #preview img { object-fit: contain; }
+.file-preview .filename, .file-preview .download { direction: ltr; unicode-bidi: isolate; }
+#top-bar, .inline-row { align-items: flex-end; }
+#top-bar > button, .inline-row > button { align-self: flex-end; min-height: 42px; }
 #upscaler-models label { align-items: center; }
 .model-info { margin-inline-start: 8px; width: 22px; height: 22px; flex: none; border-radius: 50%; cursor: pointer;
   border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary);
@@ -220,6 +232,14 @@ const aldsDecorateModels = () => {
   });
 };
 new MutationObserver(aldsDecorateModels).observe(document.documentElement, {childList: true, subtree: true});
+document.addEventListener('click', (e) => {
+  const zone = e.target.closest ? e.target.closest('#episode-drop') : null;
+  const browse = document.getElementById('episode-browse');
+  if (!zone || !browse || e.target.closest('[data-testid="block-label"]')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  browse.click();
+}, true);
 </script>"""
 
 VIDEO_COLUMNS = ["#", "Episode", "Length (min)", "Frames", "Left out automatically"]
@@ -358,8 +378,6 @@ def characters(pname):
 
 
 ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
-               ("already exists", "This character is already built. Tick “Build this character again”, or type "
-                                  "another name."),
                ("no matches", "The character wasn't found. Raise “Match threshold” a little or pick other clusters"),
                ("no characters detected", "No characters were found in the episodes"),
                ("nothing scanned yet", "Scan at least one episode first (tab 1)"),
@@ -368,7 +386,8 @@ ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
                                   "the page"),
                ("no images in", "There are no images in the uploaded references"),
                ("not enough clear", "Not enough clear views to cluster"),
-               ("were deleted to save space", "Restore this project's frames in tab 1 before building again."),
+               ("were deleted to save space", "Restore this project's frames before building again: tab 5, "
+                                              "“🧰 Project upkeep”."),
                ("didn't split", "The cluster didn't split this strongly, lower “Split strength”"),
                ("too small to split", "The cluster is too small to split")]
 
@@ -487,17 +506,74 @@ def load_project(pname):
     chars = characters(pname)
     first = chars[0] if chars else None
     return (videos_table(pname), items, gr.update(choices=choices, value=[]),
-            gr.update(choices=chars, value=first), gr.update(choices=chars, value=first),
             gr.update(choices=chars, value=first), usage_md(pname))
 
 
-def do_scan(pname, videos_text, skip_text, auto, auto_min, min_gap, keep_diff,
+def episode_label(path):
+    from .pick import EPISODES, videos_in
+    p = Path(path)
+    if p.is_dir():
+        return f"📁 {p.name or p} ({len(videos_in(p))})"
+    if not p.is_file():
+        return f"⚠ {p.name or p}"
+    return ("📥 " if p.parent.name == EPISODES and inside(p, PROJECTS_DIR) else "") + p.name
+
+
+def episodes_update(paths):
+    paths = list(dict.fromkeys(str(p).strip().strip('"').strip("'") for p in paths or [] if str(p).strip()))
+    return gr.update(choices=[(episode_label(p), p) for p in paths], value=paths)
+
+
+def ask_dialog(choose, title, start):
+    try:
+        return choose(title, start)
+    except Exception:
+        raise gr.Error(t("The Windows file window couldn't open. Drop the files on the box instead, or paste the "
+                         "path."))
+
+
+def browse_episodes(current, folder=False):
+    from .aitk import load_settings, save_settings
+    from .pick import choose_folder, choose_videos
+    found = ask_dialog(choose_folder if folder else choose_videos,
+                       t("Choose a folder of episodes") if folder else t("Choose episodes"),
+                       load_settings().get("episodes_dir"))
+    if not found:
+        return gr.skip()
+    save_settings(episodes_dir=found[0] if folder else str(Path(found[0]).parent))
+    return episodes_update(list(current or []) + found)
+
+
+def browse_episode_folder(current):
+    return browse_episodes(current, folder=True)
+
+
+def drop_episodes(pname, current, uploads, progress=gr.Progress()):
+    from .cleanup import fmt_bytes
+    from .pick import adopt_dropped, is_video
+    if not uploads:
+        return gr.skip(), gr.skip()
+    p = need_project(pname)
+    videos = [f for f in uploads if is_video(f)]
+    if not videos:
+        raise gr.Error(t("Only video files can be scanned ({types}).", types=", ".join(sorted(VIDEO_EXTS))))
+    progress(0.5, desc=t("Looking for the original files on the disk..."))
+    adopted = adopt_dropped(p.dir, videos)
+    copies = [path for path, found in adopted if not found]
+    if copies:
+        gr.Info(t("{n} dropped episodes weren't found on the disk, so a copy is kept in the project ({size}). "
+                  "“📂 Choose episodes” uses them where they are, without a copy.", n=len(copies),
+                  size=fmt_bytes(sum(c.stat().st_size for c in copies))))
+    return episodes_update(list(current or []) + [str(path) for path, _ in adopted]), None
+
+
+def do_scan(pname, videos, skip_text, auto, auto_min, min_gap, keep_diff,
             progress=gr.Progress(track_tqdm=True)):
     from .scan import run_scan
     p = need_project(pname)
-    paths = [l.strip().strip('"').strip("'") for l in (videos_text or "").splitlines() if l.strip()]
+    paths = [str(v).strip().strip('"').strip("'") for v in videos or [] if str(v).strip()]
     if not paths:
-        raise gr.Error(t("Enter at least one episode path or a folder of episodes"))
+        raise gr.Error(t("Choose or drop at least one episode, or a folder of episodes"))
     try:
         text = re.sub(r"\s*-\s*", "-", (skip_text or "").strip())
         skip = parse_ranges([s for s in re.split(r"[,\s]+", text) if s])
@@ -505,7 +581,8 @@ def do_scan(pname, videos_text, skip_text, auto, auto_min, min_gap, keep_diff,
         raise gr.Error(t("The times to skip aren't valid. Example: 0:00-1:55, 21:55-24:30"))
     progress(0, desc=t("Starting the scan..."))
     log = captured(run_scan, p, paths, skip, min_gap, keep_diff, auto, auto_min, txn=txn.scan_txn(p))
-    return (log, gr.update(choices=projects()), *load_project(p.name))
+    return (log, gr.update(choices=projects()), *load_project(p.name), episodes_update([]),
+            gr.Tabs(selected="pick"))
 
 
 def do_autoskip(pname, auto, auto_min, progress=gr.Progress(track_tqdm=True)):
@@ -546,7 +623,7 @@ def do_split(pname, selected, cut, progress=gr.Progress(track_tqdm=True)):
 
 
 USAGE = {"frames": "Extracted frames", "scan": "Scan data", "clusters": "Cluster images",
-         "cache": "Saved analysis for rebuilds", "previews": "Build previews"}
+         "cache": "Saved analysis for rebuilds", "previews": "Build previews", "episodes": "Copies of dropped episodes"}
 
 
 def usage_md(pname):
@@ -584,52 +661,118 @@ def pick_cluster(pname, selected, evt: gr.SelectData):
     return sel, str(p.clusters_dir / f"cluster_{c['id']:02d}.jpg")
 
 
-def do_build(pname, selected, ref_files, name, series, upscale_on, upscaler, upscale_version, upscale_to, threshold,
-             min_height, sim, relax, tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True), *, preview=False):
-    from .build import check_overwrite, run_build
+def own_files_of(pname, name):
+    from .pick import image_files
+    name = (name or "").strip()
+    if not pname or not name:
+        return []
+    return [str(f) for f in image_files(Project(safe_name(pname)).char_dir(name) / OWN_IMAGES)]
+
+
+def name_note(pname, name):
+    name = (name or "").strip()
+    if not pname or not name or not (Project(safe_name(pname)).char_dir(name) / "sorted").exists():
+        return ""
+    return t("🔁 **{name}** is already built. Building again saves the current result as a version first, and your "
+             "review carries over.", name=name)
+
+
+def name_changed(pname, name, files, loaded):
+    existing = own_files_of(pname, name)
+    names = [Path(f).name for f in existing]
+    added = [f for f in files or [] if Path(f).name not in set(loaded or []) and Path(f).name not in set(names)]
+    value = existing + added
+    same = [Path(f).name for f in value] == [Path(f).name for f in files or []]
+    return gr.skip() if same else gr.update(value=value or None), names, name_note(pname, name)
+
+
+def scanned(p: Project):
+    return (p.scan_dir / "detections.json").exists()
+
+
+def char_setup(pname, char):
+    build = Project(safe_name(pname)).load(f"characters/{char}/build.json") if pname and char else None
+    if not build:
+        return tuple(gr.skip() for _ in range(15))
+    p = Project(safe_name(pname))
+    s = build.get("settings", {})
+    clusters = p.load("scan/clusters.json")
+    ids = {c["id"] for c in clusters["clusters"]} if clusters else set()
+    still_valid = (clusters and set(build.get("clusters", [])) <= ids
+                   and p.path("scan/clusters.json").stat().st_mtime <= p.path(f"characters/{char}/build.json").stat().st_mtime)
+    chosen = [f"#{i}" for i in sorted(build.get("clusters", []))] if still_valid else []
+    opts = [key for key in ("auto_reject", "outfits", "screencap", "keep_text", "keep_offmodel", "keep_mono")
+            if s.get(key, key in ("auto_reject", "outfits", "screencap"))]
+    upscaler = s.get("upscaler") or DEFAULT_UPSCALER
+    version = s.get("upscale_version") or "auto"
+    from .upscale import versions
+    return (build.get("name", char), build.get("series") or "", gr.update(value=chosen),
+            s.get("own_in_set", True), s.get("own_refs", True), bool(s.get("upscale_to")),
+            upscaler if upscaler in UPSCALERS else DEFAULT_UPSCALER,
+            gr.update(value=version, visible=len(versions(upscaler)) > 1) if upscaler in UPSCALERS else gr.skip(),
+            s.get("upscale_to") or 1024, s.get("threshold", 0.13),
+            round(100 * s.get("min_height", DEFAULT_MIN_HEIGHT)), s.get("sim", 0.80), s.get("relax", 1.0),
+            s.get("tagger", "EVA02_Large"), opts)
+
+
+def do_build(pname, selected, own_files, own_in_set, own_refs, name, series, upscale_on, upscaler, upscale_version,
+             upscale_to, threshold, min_height, sim, relax, tagger, opts, progress=gr.Progress(track_tqdm=True), *,
+             preview=False):
+    from .build import run_build
+    from .pick import sync_images
     p = need_project(pname)
     name = (name or "").strip()
     if not name:
         raise gr.Error(t("Type the trigger word (the character's name)"))
     ids = sorted(int(s.lstrip("#")) for s in selected or [])
-    if not ids and not ref_files:
-        raise gr.Error(t("Pick at least one cluster of images, or upload reference images"))
-    if not preview:
-        try:
-            check_overwrite(p, name, overwrite)
-        except SystemExit as e:
-            raise gui_error(e)
-    ref_dir = ((p.preview_dir(name) / "refs" if preview else p.dir / "refs" / safe_name(name))
-               if ref_files else None)
+    own_files = list(own_files or [])
+    use_refs = bool(own_files) and own_refs and scanned(p)
+    if preview and not ids and not use_refs:
+        raise gr.Error(t("Pick at least one cluster to preview. Your own images can help too, with “Use them to "
+                         "find the character in the episodes” ticked."))
+    if not ids and not use_refs and not (own_files and own_in_set):
+        raise gr.Error(t("Pick at least one cluster of images, or add your own images of the character"))
+    own_dir = (p.preview_dir(name) if preview else p.char_dir(name)) / OWN_IMAGES
     opts = set(opts or [])
 
     def run():
-        if ref_dir:
-            shutil.rmtree(ref_dir, ignore_errors=True)
-            ref_dir.mkdir(parents=True)
-            for f in ref_files:
-                shutil.copy2(f, ref_dir / Path(f).name)
-        return run_build(p, name, ids, ref_dir, threshold, relax, min_height / 100, sim,
-                  (series or "").strip() or None, "screencap" in opts, tagger,
-                  "keep_text" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
-                  overwrite, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts,
-                  "auto_reject" in opts, "keep_mono" in opts, 12 if preview else 0, upscaler, upscale_version)
+        sync_images(own_dir, own_files if not preview or use_refs else [])
+        return run_build(p, name, ids, None, threshold, relax, min_height / 100, sim,
+                         (series or "").strip() or None, "screencap" in opts, tagger,
+                         "keep_text" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
+                         True, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts,
+                         "auto_reject" in opts, "keep_mono" in opts, 12 if preview else 0, upscaler, upscale_version,
+                         own_dir, own_in_set, use_refs)
 
     progress(0, desc=t("Starting the build..."))
     with contextlib.nullcontext() if preview else working_on(p.char_dir(name)):
-        log, data = captured_result(run, txn=txn.preview_txn(p, name) if preview else txn.build_txn(p, name, ref_dir))
+        log, data = captured_result(run, txn=txn.preview_txn(p, name) if preview else txn.build_txn(p, name))
     if preview:
-        return *preview_view(data), log, data
+        return *preview_view(data), log, data, gr.update(visible=True)
     chars = characters(p.name)
-    char = p.char_dir(name).name
-    return (log, gr.update(choices=chars, value=char), gr.update(choices=chars, value=char),
-            gr.update(choices=chars, value=char), gr.Tabs(selected="review"))
+    return log, gr.update(choices=chars, value=p.char_dir(name).name), gr.Tabs(selected="review")
 
 
-def do_preview(pname, selected, ref_files, name, series, upscale_on, upscaler, upscale_version, upscale_to,
-               threshold, min_height, sim, relax, tagger, opts, overwrite, progress=gr.Progress(track_tqdm=True)):
-    return do_build(pname, selected, ref_files, name, series, upscale_on, upscaler, upscale_version, upscale_to,
-                    threshold, min_height, sim, relax, tagger, opts, overwrite, progress, preview=True)
+def do_preview(pname, selected, own_files, own_in_set, own_refs, name, series, upscale_on, upscaler, upscale_version,
+               upscale_to, threshold, min_height, sim, relax, tagger, opts, progress=gr.Progress(track_tqdm=True)):
+    return do_build(pname, selected, own_files, own_in_set, own_refs, name, series, upscale_on, upscaler,
+                    upscale_version, upscale_to, threshold, min_height, sim, relax, tagger, opts, progress,
+                    preview=True)
+
+
+def browse_folder(current, title):
+    from .pick import choose_folder
+    current = (current or "").strip().strip('"')
+    found = ask_dialog(choose_folder, title, current if current and Path(current).is_dir() else None)
+    return found[0] if found else gr.skip()
+
+
+def browse_save_dir(current):
+    return browse_folder(current, t("Choose where to save the image set"))
+
+
+def browse_episodes_dir(current):
+    return browse_folder(current, t("Choose the folder the episodes are in now"))
 
 
 def preview_view(data):
@@ -862,7 +1005,10 @@ def panel(pname, char, files, idx):
             info += "\n\n" + t("✅ You confirmed this character.")
         elif current["uncertain"]:
             info += "\n\n" + t("❓ Check who this is: a weak match, or close to another character.")
-    if meta:
+    if meta and meta["type"] == "own":
+        info += "\n\n" + t("📥 Your image: {name} · sharpness {sharp}", name=ltr(meta.get("own", f.name)),
+                            sharp=f"{meta['sharp']:.0f}")
+    elif meta:
         m, s = divmod(int(meta["t"]), 60)
         info += "\n\n" + ("" if meta["type"] == "scene" else t(CROP.get(meta["type"], meta["type"])) + " · ") + t(
             "Episode {ep} at {at} · sharpness {sharp}", ep=f"v{meta['vid']:02d}", at=f"{m}:{s:02d}",
@@ -1346,6 +1492,8 @@ def delete_hint(pname):
     text = t("Deletes the whole project folder **{name}** from the program folder ({size}): frames, characters "
              "and saved analysis. The original episodes and the images you saved elsewhere aren't touched.",
              name=p.name, size=size)
+    if (p.dir / "episodes").is_dir():
+        text += "\n\n" + t("The copies of episodes you dropped into the program are deleted with it.")
     if saved:
         text += "\n\n" + t("Saved from it: ") + t(", ").join(t("`{char}` → `{path}`", char=c, path=d)
                                                              for c, d in saved.items())
@@ -1416,28 +1564,34 @@ def build_page(demo, gpu):
     from .aitk import load_settings
     L = localized
     title = gr.Markdown(title_md(gpu))
-    with gr.Row():
+    with gr.Row(elem_id="top-bar"):
         project = gr.Dropdown(choices=projects(), value=(projects() or [None])[0], allow_custom_value=True,
                               label=t("Project (pick one or type a new name)"), scale=4)
+        char = gr.Dropdown(label=t("Character"), choices=[], scale=3)
         refresh = gr.Button(t("🔄 Refresh"), scale=1)
         lang_btn = gr.Button(other_language(), scale=1)
         lang_box = gr.Textbox(visible=False)
 
     with gr.Tabs() as tabs:
         with gr.Tab(t("1. Scan episodes"), id="scan"):
-            gr.Markdown(t("Paste one episode path per line, or the path of a whole folder. "
-                          "(In Windows Explorer: Shift + right-click the file → Copy as path)"))
             with gr.Row():
                 with gr.Column(scale=3):
-                    videos = gr.Textbox(lines=4, label=t("Episodes"), elem_classes="ltr",
-                                        placeholder="D:\\anime\\ep01.mkv\nD:\\anime\\Season 1")
-                    auto = gr.Checkbox(True, label=t("Find the OP/ED automatically: parts repeated between episodes "
-                                                     "are left out. With one episode, the next episode in its folder "
-                                                     "is used for the comparison"))
-                    skip = gr.Textbox(label=t("More times to ignore (optional)"), elem_classes="ltr",
-                                      placeholder="0:00-1:55, 21:55-24:30")
+                    episodes_drop = gr.File(file_count="multiple", file_types=sorted(VIDEO_EXTS), type="filepath",
+                                            height=120, label=t("Drop the episodes here, or click to choose them"),
+                                            elem_id="episode-drop")
+                    with gr.Row():
+                        browse_files = gr.Button(t("📂 Choose episodes"), size="sm", elem_id="episode-browse")
+                        browse_dir = gr.Button(t("📁 Choose a folder of episodes"), size="sm")
+                    episodes = gr.Dropdown(choices=[], value=[], multiselect=True, allow_custom_value=True,
+                                           label=t("Episodes to scan"), elem_classes="ltr",
+                                           info=t("× removes one. You can also paste a path and press Enter."))
+                    auto = gr.Checkbox(True, label=t("Leave out the OP/ED automatically"),
+                                       info=t("Parts repeated between episodes are left out. With one episode, the "
+                                              "next episode in its folder is used for the comparison."))
                     with gr.Accordion(t("⚙️ Advanced settings"), open=False):
                         gr.Markdown(t("You rarely need these: the defaults suit most anime."))
+                        skip = gr.Textbox(label=t("More times to ignore (optional)"), elem_classes="ltr",
+                                          placeholder="0:00-1:55, 21:55-24:30")
                         gr.Markdown(t("**Opening and ending (OP/ED)**"))
                         auto_min = gr.Slider(15, 120, 40, step=5, label=t("Shortest OP/ED (seconds)"),
                                              info=t("A part repeated between episodes is left out only if it's at "
@@ -1451,36 +1605,21 @@ def build_page(demo, gpu):
                         keep_diff = gr.Slider(1, 20, 5, step=0.5, label=t("Change needed to keep another frame"),
                                               info=t("How different a frame must look from the last kept one. "
                                                      "Lower = more, more similar frames. Higher = fewer."))
-                    scan_btn = gr.Button(t("▶ Start scanning"), variant="primary")
+                    scan_btn = gr.Button(t("▶ Start scanning"), variant="primary", size="lg")
                     busy_scan, stop_scan = running()
                 with gr.Column(scale=3):
                     vids_df = gr.Dataframe(headers=VIDEO_COLUMNS, interactive=False, wrap=True,
                                            label=t("Episodes scanned in this project"),
                                            column_widths=["5%", "31%", "13%", "13%", "38%"])
-                    with gr.Accordion(t("💽 Disk space"), open=False):
-                        usage = gr.Markdown()
-                        gr.Markdown(t("**Safe clean** deletes only what the program will never use again: frames "
-                                      "with no character, frames inside the OP/ED, thumbnails and leftover copies. "
-                                      "Nothing you need is lost."))
-                        clean_safe_btn = gr.Button(t("🧹 Safe clean"))
-                        gr.Markdown(t("**Delete all frames** keeps your finished images and saved versions. "
-                                      "Restore the frames from the original episodes before building again."))
-                        clean_confirm = gr.Checkbox(label=t("Delete extracted frames; keep finished images and versions"))
-                        clean_all_btn = gr.Button(t("🗑 Delete all frames"), variant="stop")
-                        gr.Markdown(t("**Restore frames:** recover missing frames using the original episodes. "
-                                      "Character groups and reviewed images stay as they are."))
-                        restore_folder = gr.Textbox(label=t("Episodes folder if moved (optional)"), elem_classes="ltr")
-                        restore_frames_btn = gr.Button(t("↶ Restore missing frames"))
-                        busy_restore, stop_restore = running()
-            scan_log = gr.Textbox(lines=12, label=t("Log"), elem_classes="log", autoscroll=True)
+                    scan_log = gr.Textbox(lines=10, label=t("Log"), elem_classes="log", autoscroll=True)
 
         with gr.Tab(t("2. Pick the character"), id="pick"):
-            gr.Markdown(t("Click a character's image to select it, click again to unselect. If the character shows up "
-                          "in more than one cluster (another outfit, say), pick all of them. **The numbers change "
-                          "after every scan.**"))
+            gr.Markdown(t("Click the character's image to select it, click again to unselect. If it shows up in more "
+                          "than one cluster (another outfit, say), pick all of them. **The numbers change after every "
+                          "scan.**"))
             with gr.Row():
                 with gr.Column(scale=3):
-                    clusters_gal = gr.Gallery(label=t("Characters found"), columns=5, height=560,
+                    clusters_gal = gr.Gallery(label=t("Characters found"), columns=5, height=500,
                                               allow_preview=False, object_fit="contain", buttons=[])
                     with gr.Accordion(t("🧩 Fix the clusters (two characters mixed, or one split up)"), open=False):
                         gr.Markdown(t("**One character in several clusters?** Usually there's nothing to fix: just "
@@ -1503,15 +1642,23 @@ def build_page(demo, gpu):
                         recluster_log = gr.Textbox(lines=6, label=t("Log"), elem_classes="log")
                 with gr.Column(scale=2):
                     chosen = gr.CheckboxGroup(label=t("Selected clusters"), choices=[])
-                    sheet = gr.Image(label=t("Cluster preview"), interactive=False, height=320,
+                    sheet = gr.Image(label=t("Cluster preview"), interactive=False, height=380,
                                      buttons=["fullscreen"])
-                    refs = gr.File(file_count="multiple", file_types=["image"], type="filepath", height=150,
-                                   label=t("Reference images of the character (optional, with the clusters or "
-                                           "instead of them; useful for side characters)"))
+            with gr.Row():
+                with gr.Column(scale=1):
                     name = gr.Textbox(label=t("Trigger word (the character's name)"), elem_classes="ltr",
                                       placeholder="natsu_ft")
+                    name_info = gr.Markdown()
                     series = gr.Textbox(label=t("Anime name as a tag (optional)"), elem_classes="ltr",
                                         placeholder="fairy tail")
+                    own_files = gr.File(file_count="multiple", file_types=["image"], type="filepath", height=150,
+                                        label=t("Your own images of the character (optional)"))
+                    gr.Markdown(t("Tagged and enlarged like the scenes, and kept with the character for later "
+                                  "builds. × removes one."))
+                    own_in_set = gr.Checkbox(True, label=t("Add them to the image set"))
+                    own_refs = gr.Checkbox(True, label=t("Use them to find the character in the episodes"))
+                    own_loaded = gr.State([])
+                with gr.Column(scale=1):
                     upscale_on = gr.Checkbox(label=t("Enlarge small scenes with an anime upscaler: cleaner lines "
                                                      "than plain resizing"))
                     with gr.Column(visible=False) as upscale_box:
@@ -1547,61 +1694,27 @@ def build_page(demo, gpu):
                                              info=t("EVA02_Large is the most accurate; the others are faster."))
                         opts = gr.CheckboxGroup(build_options(), value=["auto_reject", "outfits", "screencap"],
                                                 label=t("Options"))
-                    overwrite = gr.Checkbox(label=t("Build this character again (the current result is saved as a "
-                                                    "version, and your review carries over)"))
-                    preview_btn = gr.Button(t("🔎 Preview these settings"))
+                    with gr.Row():
+                        preview_btn = gr.Button(t("🔎 Preview these settings"), scale=1)
+                        build_btn = gr.Button(t("▶ Build the image set"), variant="primary", scale=2)
                     busy_preview, stop_preview = running()
-                    build_btn = gr.Button(t("▶ Build the image set"), variant="primary")
                     busy_build, stop_build = running()
-            with gr.Accordion(t("🔎 Settings preview"), open=True):
+            with gr.Accordion(t("🔎 Settings preview"), open=True, visible=False) as preview_box:
                 preview_state = gr.State({})
                 preview_summary = gr.Markdown(preview_view({})[1])
                 preview_gal = gr.Gallery(columns=6, height=360, label=t("Accepted and excluded scenes"),
                                          object_fit="contain")
-            build_log = gr.Textbox(lines=14, label=t("Report"), elem_classes="log")
+            build_log = gr.Textbox(lines=12, label=t("Report"), elem_classes="log")
 
         with gr.Tab(t("3. Review"), id="review"):
-            gr.Markdown(t("- Images marked ❓ (unsure who it is) and ⚠ (to check) come first: look at them before the "
-                          "rest.\n- **✅ Definitely this character** confirms a clear image, and the program learns "
-                          "from it.\n- **🚫 N** removes another character and learns to leave out what looks like it. "
-                          "**🗑 Delete** removes a bad image.\n- **← →** move between images, **Ctrl+Z** undoes a "
-                          "removal."))
-            with gr.Row():
-                r_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
+            gr.Markdown(t("❓ unsure who it is and ⚠ to check come first. **✅** confirms a clear image, and the program "
+                          "learns from it · **🚫 N** removes another character and learns to leave it out · "
+                          "**🗑 Delete** removes a bad image · **← →** next and previous · **Ctrl+Z** undoes a "
+                          "removal"))
+            with gr.Row(elem_classes="inline-row"):
                 r_filter = gr.Dropdown(label=t("Show"), choices=[(t("All"), "all")], value="all", scale=2)
-                r_stats = gr.Markdown()
-            with gr.Accordion(t("🕘 Saved build versions"), open=False):
-                gr.Markdown(t("A version is saved before every rebuild. Restoring also saves the current result. "
-                              "Versions stay inside this project; images that didn't change are stored only once."))
-                with gr.Row():
-                    version_pick = gr.Dropdown(label=t("Saved version"), choices=[], scale=3)
-                    version_refresh = gr.Button(t("🔄 Refresh"), scale=1)
-                version_diff = gr.Markdown()
-                with gr.Row():
-                    version_save = gr.Button(t("💾 Save current version"))
-                    version_restore = gr.Button(t("↶ Restore selected version"))
-                busy_version, stop_version = running()
-                with gr.Row():
-                    version_delete_confirm = gr.Checkbox(label=t("Delete the selected version for good"), scale=3)
-                    version_delete = gr.Button(t("🗑 Delete version"), variant="stop", scale=1)
-                version_log = gr.Textbox(label=t("Log"), lines=3, elem_classes="log")
-            with gr.Accordion(t("✅ Confirmed images and the effect of your review"), open=False):
-                gr.Markdown(t("Confirm clear images from different angles and in different outfits. Images marked ❓ "
-                              "come first under “All”."))
-                with gr.Row():
-                    with gr.Column():
-                        confirmed_pick = gr.Dropdown(label=t("Confirmed images"), choices=[], elem_classes="ltr")
-                        confirmed_thumb = gr.Image(interactive=False, height=200, show_label=False)
-                        unconfirm_btn = gr.Button(t("↶ Remove this confirmation"))
-                    with gr.Column(scale=2):
-                        gr.Markdown(t(IMPACT_NOTE))
-                        impact_btn = gr.Button(t("🔎 Preview the effect"))
-                        busy_impact, stop_impact = running()
-                        impact_summary = gr.Markdown()
-                        impact_table = gr.Dataframe(headers=IMPACT_COLUMNS, interactive=False)
-                impact_gal = gr.Gallery(label=t("Frames that change (when the frames are still on disk)"),
-                                        columns=4, height=350, object_fit="contain")
-                impact_state = gr.State({})
+                with gr.Column(scale=3):
+                    r_stats = gr.Markdown()
             with gr.Row():
                 with gr.Column(scale=3):
                     r_gal = gr.Gallery(columns=6, height=720, allow_preview=False, object_fit="contain",
@@ -1620,20 +1733,50 @@ def build_page(demo, gpu):
                         undo_btn = gr.Button(t("↶ Undo"), elem_id="btn-undo")
                     r_caption = gr.Textbox(lines=4, label=t("Caption"), elem_classes="ltr")
                     save_btn = gr.Button(t("💾 Save caption"))
-                    with gr.Row():
+                    with gr.Row(elem_classes="inline-row"):
                         move_to = gr.Dropdown(label=t("Wrong group? Move it to"), choices=[], scale=3)
                         move_btn = gr.Button(t("↪ Move"), scale=1)
-                    forget_btn = gr.Button(t("🧹 Forget all images rejected as another character"), size="sm")
             files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
+            with gr.Accordion(t("✅ Confirmed images and the effect of your review"), open=False):
+                gr.Markdown(t("Confirm clear images from different angles and in different outfits. Images marked ❓ "
+                              "come first under “All”."))
+                with gr.Row():
+                    with gr.Column():
+                        confirmed_pick = gr.Dropdown(label=t("Confirmed images"), choices=[], elem_classes="ltr")
+                        confirmed_thumb = gr.Image(interactive=False, height=200, show_label=False)
+                        unconfirm_btn = gr.Button(t("↶ Remove this confirmation"))
+                        forget_btn = gr.Button(t("🧹 Forget all images rejected as another character"), size="sm")
+                    with gr.Column(scale=2):
+                        gr.Markdown(t(IMPACT_NOTE))
+                        impact_btn = gr.Button(t("🔎 Preview the effect"))
+                        busy_impact, stop_impact = running()
+                        impact_summary = gr.Markdown()
+                        impact_table = gr.Dataframe(headers=IMPACT_COLUMNS, interactive=False)
+                impact_gal = gr.Gallery(label=t("Frames that change (when the frames are still on disk)"),
+                                        columns=4, height=350, object_fit="contain")
+                impact_state = gr.State({})
+            with gr.Accordion(t("🕘 Saved build versions"), open=False):
+                gr.Markdown(t("A version is saved before every rebuild. Restoring also saves the current result. "
+                              "Versions stay inside this project; images that didn't change are stored only once."))
+                with gr.Row(elem_classes="inline-row"):
+                    version_pick = gr.Dropdown(label=t("Saved version"), choices=[], scale=3)
+                    version_refresh = gr.Button(t("🔄 Refresh"), scale=1)
+                version_diff = gr.Markdown()
+                with gr.Row():
+                    version_save = gr.Button(t("💾 Save current version"))
+                    version_restore = gr.Button(t("↶ Restore selected version"))
+                busy_version, stop_version = running()
+                with gr.Row(elem_classes="inline-row"):
+                    version_delete_confirm = gr.Checkbox(label=t("Delete the selected version for good"), scale=3)
+                    version_delete = gr.Button(t("🗑 Delete version"), variant="stop", scale=1)
+                version_log = gr.Textbox(label=t("Log"), lines=3, elem_classes="log")
 
         with gr.Tab(t("4. Tags"), id="tags"):
             gr.Markdown(t("Every tag the tagger found is in the captions. Pick what the LoRA is for to see the tags "
                           "that matter for it, then move the ones the trigger word should learn into the trigger word. "
                           "Below are all the tags and how often they appear: remove, replace or add tags in **all** "
                           "captions at once. Every change can be undone."))
-            with gr.Row():
-                t_char = gr.Dropdown(label=t("Character"), choices=[], scale=1)
-                t_goal = gr.Radio(goal_choices(), value="character", label=t("What is the LoRA for?"), scale=2)
+            t_goal = gr.Radio(goal_choices(), value="character", label=t("What is the LoRA for?"))
             with gr.Row():
                 with gr.Column(scale=3):
                     t_goal_tags = gr.CheckboxGroup(label=t("Tags for this goal (checked = in at least 20% of the "
@@ -1657,11 +1800,11 @@ def build_page(demo, gpu):
                     with gr.Row():
                         t_remove_btn = gr.Button(t("🗑 Remove the selected from all captions"), variant="stop")
                         t_absorb_sel_btn = gr.Button(t("🔒 Move the selected into the trigger word"))
-                    with gr.Row():
+                    with gr.Row(elem_classes="inline-row"):
                         t_new = gr.Textbox(label=t("Replace the selected with (empty = remove)"), elem_classes="ltr",
                                            scale=3, placeholder="brown eyes")
                         t_replace_btn = gr.Button(t("↔ Replace"), scale=1)
-                    with gr.Row():
+                    with gr.Row(elem_classes="inline-row"):
                         t_add_text = gr.Textbox(label=t("Add a tag to every caption"), elem_classes="ltr", scale=3)
                         t_add_btn = gr.Button(t("➕ Add"), scale=1)
                     t_undo_btn = gr.Button(t("↶ Undo the last change (Ctrl+Z)"), elem_id="btn-tag-undo")
@@ -1676,23 +1819,47 @@ def build_page(demo, gpu):
             saved_dir = load_settings().get("save_dir", "")
             with gr.Row():
                 with gr.Column(scale=2):
-                    e_char = gr.Dropdown(label=t("Character"), choices=[])
-                    e_out = gr.Textbox(saved_dir, label=t("Save to (paste a folder path; a folder named after the "
-                                                          "character is made in it)"),
-                                       elem_classes="ltr", placeholder="D:\\datasets")
-                    export_btn = gr.Button(t("💾 Save the images and captions"), variant="primary")
+                    with gr.Row(elem_classes="inline-row"):
+                        e_out = gr.Textbox(saved_dir, label=t("Save to (a folder named after the character is made "
+                                                              "in it)"),
+                                           elem_classes="ltr", placeholder="D:\\datasets", scale=4)
+                        e_browse = gr.Button(t("📁 Choose"), scale=1)
+                    export_btn = gr.Button(t("💾 Save the images and captions"), variant="primary", size="lg")
                     busy_export, stop_export = running()
                     export_log = gr.Textbox(lines=6, label=t("Log"), elem_classes="log")
                 with gr.Column(scale=2):
                     e_summary = gr.Markdown()
                     groups_df = gr.Dataframe(headers=GROUP_COLUMNS, interactive=False,
                                              label=t("Distribution"))
-            with gr.Accordion(t("🗑 Delete the project from the program folder (after saving)"), open=False):
+            with gr.Accordion(t("🧰 Project upkeep: disk space, frames and deleting"), open=False):
+                with gr.Row():
+                    with gr.Column():
+                        usage = gr.Markdown()
+                        gr.Markdown(t("**Safe clean** deletes only what the program will never use again: frames "
+                                      "with no character, frames inside the OP/ED, thumbnails and leftover copies. "
+                                      "Nothing you need is lost."))
+                        clean_safe_btn = gr.Button(t("🧹 Safe clean"))
+                        gr.Markdown(t("**Delete all frames** keeps your finished images and saved versions. "
+                                      "Restore the frames from the original episodes before building again."))
+                        clean_confirm = gr.Checkbox(label=t("Delete extracted frames; keep finished images and "
+                                                            "versions"))
+                        clean_all_btn = gr.Button(t("🗑 Delete all frames"), variant="stop")
+                    with gr.Column():
+                        gr.Markdown(t("**Restore frames:** recover missing frames using the original episodes. "
+                                      "Character groups and reviewed images stay as they are."))
+                        with gr.Row(elem_classes="inline-row"):
+                            restore_folder = gr.Textbox(label=t("Episodes folder if moved (optional)"),
+                                                        elem_classes="ltr", scale=4)
+                            restore_browse = gr.Button(t("📁 Choose"), scale=1)
+                        restore_frames_btn = gr.Button(t("↶ Restore missing frames"))
+                        busy_restore, stop_restore = running()
+                        upkeep_log = gr.Textbox(lines=5, label=t("Log"), elem_classes="log")
+                gr.Markdown(t("**Delete the project** from the program folder, after saving what you need:"))
                 del_hint = gr.Markdown()
                 del_confirm = gr.Checkbox(label=t("I understand deleting the project is final and can't be undone"))
                 del_project_btn = gr.Button(t("🗑 Delete the project"), variant="stop")
 
-    proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
+    proj_outputs = [vids_df, clusters_gal, chosen, char, usage]
     project_loaded = project.change(L(load_project), project, proj_outputs)
     list_refreshed = refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project,
                                    [project, *proj_outputs])
@@ -1706,125 +1873,149 @@ def build_page(demo, gpu):
         ev.failure(end_ui, None, ui, queue=False)
         return ev
 
-    for stop in (stop_scan, stop_auto, stop_clu, stop_build, stop_export, stop_restore, stop_preview, stop_version, stop_impact):
+    for stop in (stop_scan, stop_auto, stop_clu, stop_build, stop_export, stop_restore, stop_preview, stop_version,
+                 stop_impact):
         stop.click(L(press_stop), None, stop, queue=False)
 
+    episodes.blur(episodes_update, episodes, episodes, queue=False)
+    browse_files.click(L(browse_episodes), episodes, episodes, concurrency_id="dialog")
+    browse_dir.click(L(browse_episode_folder), episodes, episodes, concurrency_id="dialog")
+    episodes_drop.upload(L(drop_episodes), [project, episodes, episodes_drop], [episodes, episodes_drop],
+                         concurrency_id="dialog")
     scanned = long_action(scan_btn, stop_scan, busy_scan, do_scan,
-                          [project, videos, skip, auto, auto_min, min_gap, keep_diff],
-                          [scan_log, project, *proj_outputs], scan_log)
+                          [project, episodes, skip, auto, auto_min, min_gap, keep_diff],
+                          [scan_log, project, *proj_outputs, episodes, tabs], scan_log)
     autoskipped = long_action(autoskip_btn, stop_auto, busy_auto, do_autoskip, [project, auto, auto_min],
                               [scan_log, *proj_outputs], scan_log)
     reclustered = long_action(recluster_btn, stop_clu, busy_clu, do_recluster, [project, cut, min_csize],
                               [recluster_log, clusters_gal, chosen], recluster_log)
     split = long_action(split_btn, stop_clu, busy_clu, do_split, [project, chosen, split_cut],
                         [recluster_log, clusters_gal, chosen], recluster_log)
-    clean_safe_btn.click(L(lambda p: do_clean(p, False, False)), project, [scan_log, usage], concurrency_id="gpu")
-    clean_all_btn.click(L(lambda p, c: do_clean(p, True, c)), [project, clean_confirm], [scan_log, usage], concurrency_id="gpu")
+    clean_safe_btn.click(L(lambda p: do_clean(p, False, False)), project, [upkeep_log, usage], concurrency_id="gpu")
+    clean_all_btn.click(L(lambda p, c: do_clean(p, True, c)), [project, clean_confirm], [upkeep_log, usage],
+                        concurrency_id="gpu")
     long_action(restore_frames_btn, stop_restore, busy_restore, do_restore_frames, [project, restore_folder],
-                [scan_log, usage, vids_df], scan_log)
+                [upkeep_log, usage, vids_df], upkeep_log)
+    restore_browse.click(L(browse_episodes_dir), restore_folder, restore_folder, concurrency_id="dialog")
     clusters_gal.select(L(pick_cluster), [project, chosen], [chosen, sheet])
     upscale_on.change(lambda on: gr.update(visible=on), upscale_on, upscale_box, queue=False)
     model_in = [upscale_on, upscaler, upscale_version]
-    upscale_on.change(L(do_model), model_in, [model_info, model_delete], concurrency_id="download")
+    model_out = [model_info, model_delete]
+    for control in model_in:
+        control.change(L(model_view), model_in, model_out, queue=False)
+    upscale_on.input(L(do_model), model_in, model_out, concurrency_id="download")
     upscaler.input(model_versions, [upscaler, upscale_version], upscale_version, queue=False) \
-        .then(L(do_model), model_in, [model_info, model_delete], concurrency_id="download")
-    upscale_version.input(L(do_model), model_in, [model_info, model_delete], concurrency_id="download")
-    model_delete.click(L(delete_model), [upscaler, upscale_version], [model_info, model_delete],
-                       concurrency_id="gpu")
-    build_inputs = [project, chosen, refs, name, series, upscale_on, upscaler, upscale_version, upscale_to, threshold,
-                    min_height, sim, relax,
-                    tagger, opts, overwrite]
+        .then(L(do_model), model_in, model_out, concurrency_id="download")
+    upscale_version.input(L(do_model), model_in, model_out, concurrency_id="download")
+    model_delete.click(L(delete_model), [upscaler, upscale_version], model_out, concurrency_id="gpu")
+
+    own_in = [project, name, own_files, own_loaded]
+    own_out = [own_files, own_loaded, name_info]
+    name.change(L(name_changed), own_in, own_out, trigger_mode="always_last")
+    project.change(L(name_changed), own_in, own_out)
+    setup_out = [name, series, chosen, own_in_set, own_refs, upscale_on, upscaler, upscale_version, upscale_to,
+                 threshold, min_height, sim, relax, tagger, opts]
+    char.change(L(char_setup), [project, char], setup_out)
+
+    build_inputs = [project, chosen, own_files, own_in_set, own_refs, name, series, upscale_on, upscaler,
+                    upscale_version, upscale_to, threshold, min_height, sim, relax, tagger, opts]
+    preview_out = [preview_gal, preview_summary, preview_state, preview_box]
     long_action(preview_btn, stop_preview, busy_preview, do_preview, build_inputs,
-                [preview_gal, preview_summary, build_log, preview_state], build_log)
+                [preview_gal, preview_summary, build_log, preview_state, preview_box], build_log)
+
     def clear_preview():
-        return [], t("Settings or your review changed. Run the preview again to see the new result."), {}
+        return [], preview_view({})[1], {}, gr.update(visible=False)
     for control in build_inputs:
-        control.change(L(clear_preview), None, [preview_gal, preview_summary, preview_state], concurrency_id="gpu")
-    built = long_action(build_btn, stop_build, busy_build, do_build, build_inputs,
-                        [build_log, r_char, e_char, t_char, tabs], build_log) \
-        .success(L(change_char), [project, r_char],
-                 [r_filter, move_to, r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]) \
-        .success(L(version_choices), [project, r_char], version_pick) \
+        control.change(L(clear_preview), None, preview_out, concurrency_id="gpu")
+    rv_out = [r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]
+    built = long_action(build_btn, stop_build, busy_build, do_build, build_inputs, [build_log, char, tabs],
+                        build_log)
+    built.success(L(name_changed), own_in, own_out)
+    built = built.success(L(change_char), [project, char], [r_filter, move_to, *rv_out]) \
+        .success(L(version_choices), [project, char], version_pick) \
         .success(lambda: [], None, undo_st)
 
-    rv_out = [r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]
-    r_char.change(L(change_char), [project, r_char], [r_filter, move_to, *rv_out])
-    r_char.change(L(version_choices), [project, r_char], version_pick)
+    char.change(L(change_char), [project, char], [r_filter, move_to, *rv_out])
+    char.change(L(version_choices), [project, char], version_pick)
     project.change(lambda: [], None, undo_st)
-    r_char.change(lambda: [], None, undo_st)
-    version_refresh.click(L(version_choices), [project, r_char], version_pick) \
-        .then(L(version_comparison), [project, r_char, version_pick], version_diff)
-    version_pick.change(L(version_comparison), [project, r_char, version_pick], version_diff)
-    version_delete.click(L(do_delete_version), [project, r_char, version_pick, version_delete_confirm],
+    char.change(lambda: [], None, undo_st)
+    version_refresh.click(L(version_choices), [project, char], version_pick) \
+        .then(L(version_comparison), [project, char, version_pick], version_diff)
+    version_pick.change(L(version_comparison), [project, char, version_pick], version_diff)
+    version_delete.click(L(do_delete_version), [project, char, version_pick, version_delete_confirm],
                          [version_log, version_pick, version_delete_confirm], concurrency_id="review")
-    long_action(version_save, stop_version, busy_version, do_version, [project, r_char],
+    long_action(version_save, stop_version, busy_version, do_version, [project, char],
                 [version_log, version_pick, undo_st], version_log)
     restored = long_action(version_restore, stop_version, busy_version, do_restore_version,
-                           [project, r_char, version_pick], [version_log, version_pick, undo_st], version_log) \
-        .success(L(change_char), [project, r_char], [r_filter, move_to, *rv_out])
-    r_filter.change(L(load_review), [project, r_char, r_filter], rv_out)
-    r_gal.select(L(select_image), [project, r_char, files_st], rv_out)
-    prev_btn.click(L(step(-1)), [project, r_char, files_st, idx_st], rv_out)
-    next_btn.click(L(step(+1)), [project, r_char, files_st, idx_st], rv_out)
-    trash_in = [project, r_char, r_filter, files_st, idx_st, undo_st]
+                           [project, char, version_pick], [version_log, version_pick, undo_st], version_log) \
+        .success(L(change_char), [project, char], [r_filter, move_to, *rv_out])
+    r_filter.change(L(load_review), [project, char, r_filter], rv_out)
+    r_gal.select(L(select_image), [project, char, files_st], rv_out)
+    prev_btn.click(L(step(-1)), [project, char, files_st, idx_st], rv_out)
+    next_btn.click(L(step(+1)), [project, char, files_st, idx_st], rv_out)
+    trash_in = [project, char, r_filter, files_st, idx_st, undo_st]
     del_btn.click(L(delete_image), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
     rejected = reject_btn.click(L(reject_image), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
     undone = undo_btn.click(L(undo_delete), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
-    forgotten = forget_btn.click(L(forget_rejected), [project, r_char, r_filter, files_st, idx_st], [*rv_out, r_filter], concurrency_id="review")
-    confirmed = confirm_btn.click(L(confirm_image), [project, r_char, r_filter, files_st, idx_st],
+    forgotten = forget_btn.click(L(forget_rejected), [project, char, r_filter, files_st, idx_st], [*rv_out, r_filter],
+                                 concurrency_id="review")
+    confirmed = confirm_btn.click(L(confirm_image), [project, char, r_filter, files_st, idx_st],
                                   [*rv_out, r_filter], concurrency_id="review")
-    unconfirmed = unconfirm_btn.click(L(unconfirm_image), [project, r_char, r_filter, files_st, idx_st, confirmed_pick],
-                                     [*rv_out, r_filter], concurrency_id="review")
+    unconfirmed = unconfirm_btn.click(L(unconfirm_image), [project, char, r_filter, files_st, idx_st, confirmed_pick],
+                                      [*rv_out, r_filter], concurrency_id="review")
     confirmed_out = [confirmed_pick, confirmed_thumb]
     impact_out = [impact_summary, impact_table, impact_gal, impact_state]
-    for event in (built, restored, rejected, undone, forgotten, confirmed, unconfirmed, scanned, autoskipped, reclustered, split):
-        event.success(L(confirmed_view), [project, r_char], confirmed_out)
+    for event in (built, restored, rejected, undone, forgotten, confirmed, unconfirmed, scanned, autoskipped,
+                  reclustered, split):
+        event.success(L(confirmed_view), [project, char], confirmed_out)
         event.success(L(clear_impact), None, impact_out, concurrency_id="gpu")
-        event.success(L(clear_preview), None, [preview_gal, preview_summary, preview_state], concurrency_id="gpu")
-    for control in (project, r_char):
-        control.change(L(confirmed_view), [project, r_char], confirmed_out)
+        event.success(L(clear_preview), None, preview_out, concurrency_id="gpu")
+    for control in (project, char):
+        control.change(L(confirmed_view), [project, char], confirmed_out)
         control.change(L(clear_impact), None, impact_out, concurrency_id="gpu")
-    confirmed_pick.change(L(confirmed_image), [project, r_char, confirmed_pick], confirmed_thumb)
-    long_action(impact_btn, stop_impact, busy_impact, do_feedback_preview, [project, r_char],
+    confirmed_pick.change(L(confirmed_image), [project, char, confirmed_pick], confirmed_thumb)
+    long_action(impact_btn, stop_impact, busy_impact, do_feedback_preview, [project, char],
                 [impact_summary, impact_table, impact_gal, impact_state])
-    move_btn.click(L(move_image), [project, r_char, r_filter, files_st, idx_st, move_to], rv_out, concurrency_id="review")
-    save_btn.click(L(save_caption), [project, r_char, files_st, idx_st, r_caption], None, concurrency_id="review")
+    move_btn.click(L(move_image), [project, char, r_filter, files_st, idx_st, move_to], rv_out,
+                   concurrency_id="review")
+    save_btn.click(L(save_caption), [project, char, files_st, idx_st, r_caption], None, concurrency_id="review")
 
     t_out = [t_table, t_status, t_selected]
     g_out = [t_goal_tags, t_goal_legend, t_box, t_box_note]
-    t_char.change(L(tag_views), [project, t_char, t_search, t_goal], [*t_out, *g_out])
-    t_goal.change(L(goal_view), [project, t_char, t_goal], g_out)
-    t_search.change(L(tag_search), [project, t_char, t_search, t_selected], t_out)
+    char.change(L(tag_views), [project, char, t_search, t_goal], [*t_out, *g_out])
+    t_goal.change(L(goal_view), [project, char, t_goal], g_out)
+    t_search.change(L(tag_search), [project, char, t_search, t_selected], t_out)
     t_table.select(pick_tag, t_selected, t_selected)
-    t_remove_btn.click(L(tag_remove), [project, t_char, t_selected, t_search, t_goal], [*t_out, *g_out],
+    t_remove_btn.click(L(tag_remove), [project, char, t_selected, t_search, t_goal], [*t_out, *g_out],
                        concurrency_id="review")
-    t_replace_btn.click(L(tag_replace), [project, t_char, t_selected, t_new, t_search, t_goal], [*t_out, *g_out],
+    t_replace_btn.click(L(tag_replace), [project, char, t_selected, t_new, t_search, t_goal], [*t_out, *g_out],
                         concurrency_id="review")
-    t_add_btn.click(L(tag_add), [project, t_char, t_add_text, t_search, t_goal], [*t_out, *g_out],
+    t_add_btn.click(L(tag_add), [project, char, t_add_text, t_search, t_goal], [*t_out, *g_out],
                     concurrency_id="review")
-    t_absorb_btn.click(L(tag_absorb), [project, t_char, t_goal_tags, t_search, t_goal], [*t_out, *g_out],
+    t_absorb_btn.click(L(tag_absorb), [project, char, t_goal_tags, t_search, t_goal], [*t_out, *g_out],
                        concurrency_id="review")
-    t_absorb_sel_btn.click(L(tag_absorb), [project, t_char, t_selected, t_search, t_goal], [*t_out, *g_out],
+    t_absorb_sel_btn.click(L(tag_absorb), [project, char, t_selected, t_search, t_goal], [*t_out, *g_out],
                            concurrency_id="review")
-    t_restore_btn.click(L(tag_restore), [project, t_char, t_box, t_search, t_goal], [*t_out, *g_out],
+    t_restore_btn.click(L(tag_restore), [project, char, t_box, t_search, t_goal], [*t_out, *g_out],
                         concurrency_id="review")
-    t_undo_btn.click(L(tag_undo), [project, t_char, t_search, t_goal], [*t_out, *g_out], concurrency_id="review")
-    t_outfits_btn.click(L(rerun_outfits), [project, t_char, t_search, t_goal], [*t_out, *g_out, t_log],
+    t_undo_btn.click(L(tag_undo), [project, char, t_search, t_goal], [*t_out, *g_out], concurrency_id="review")
+    t_outfits_btn.click(L(rerun_outfits), [project, char, t_search, t_goal], [*t_out, *g_out, t_log],
                         concurrency_id="review")
 
-    sum_in, sum_out = [project, e_char, e_out], [e_summary, groups_df]
-    e_char.change(L(save_summary), sum_in, sum_out)
+    sum_in, sum_out = [project, char, e_out], [e_summary, groups_df]
+    char.change(L(save_summary), sum_in, sum_out)
     e_out.change(L(save_summary), sum_in, sum_out)
+    e_browse.click(L(browse_save_dir), e_out, e_out, concurrency_id="dialog")
     tabs.select(L(save_summary), sum_in, sum_out)
     tabs.select(L(delete_hint), project, del_hint)
     project.change(L(delete_hint), project, del_hint)
-    tabs.select(L(tag_views), [project, t_char, t_search, t_goal], [*t_out, *g_out])
+    tabs.select(L(tag_views), [project, char, t_search, t_goal], [*t_out, *g_out])
     for event in (project_loaded, list_refreshed):
-        event.then(L(change_char), [project, r_char], [r_filter, move_to, *rv_out]) \
-            .then(L(version_choices), [project, r_char], version_pick) \
-            .then(L(tag_views), [project, t_char, t_search, t_goal], [*t_out, *g_out]) \
+        event.then(L(change_char), [project, char], [r_filter, move_to, *rv_out]) \
+            .then(L(version_choices), [project, char], version_pick) \
+            .then(L(tag_views), [project, char, t_search, t_goal], [*t_out, *g_out]) \
             .then(L(save_summary), sum_in, sum_out)
-    long_action(export_btn, stop_export, busy_export, do_save, [project, e_char, e_out], [export_log], export_log) \
+    long_action(export_btn, stop_export, busy_export, do_save, [project, char, e_out], [export_log], export_log) \
         .success(L(delete_hint), project, del_hint)
     del_project_btn.click(L(delete_project), [project, del_confirm], [project, del_confirm], concurrency_id="gpu")
 
@@ -1835,9 +2026,8 @@ def build_page(demo, gpu):
                          (upscale_version, {"choices": model_version_choices})):
         texts.setdefault(block._id, (block, {}))[1].update(props)
     refreshed = [vids_df, clusters_gal, usage, r_filter, move_to, r_info, r_stats, t_table, t_status, t_goal_legend,
-                 t_box_note, e_summary,
-                 groups_df, del_hint, version_pick, version_diff, preview_gal, preview_summary,
-                 impact_summary, impact_table, impact_gal, model_info]
+                 t_box_note, e_summary, groups_df, del_hint, version_pick, version_diff, preview_gal,
+                 preview_summary, impact_summary, impact_table, impact_gal, model_info, name_info]
     switch_outputs = [block for block, _ in texts.values()] + [b for b in refreshed if b._id not in texts]
     tab_names = [(props["label"], AR[props["label"]]) for block, props in texts.values()
                  if isinstance(block, gr.Tab)]
@@ -1854,8 +2044,8 @@ def build_page(demo, gpu):
 
     demo.load(L(init_page), project, [lang_box, project, *proj_outputs]).then(None, lang_box, None, js=set_direction)
 
-    def switch_language(pname, char, files, idx, tchar, query, goal, echar, parent, version, preview, impact,
-                        upscale_on, model, upscale_version):
+    def switch_language(pname, char, files, idx, query, goal, parent, version, preview, impact, upscale_on, model,
+                        upscale_version, trigger):
         from .aitk import save_settings
         new = "en" if lang() == "ar" else "ar"
         _session_langs[_session()] = new
@@ -1865,9 +2055,9 @@ def build_page(demo, gpu):
         with use(new):
             updates = {block._id: {prop: translated(text) for prop, text in props.items()}
                        for block, props in texts.values()}
-            rows, status, _ = _tag_state(pname, tchar, query)
-            _, _, legend, _, box_note = _goal_state(pname, tchar, goal)
-            summary, groups = save_summary(pname, echar, parent)
+            rows, status, _ = _tag_state(pname, char, query)
+            _, _, legend, _, box_note = _goal_state(pname, char, goal)
+            summary, groups = save_summary(pname, char, parent)
             preview_images, preview_text = preview_view(preview)
             impact_text, impact_rows = impact_view(impact)
             for block, kw in ((vids_df, {"value": videos_table(pname)}),
@@ -1891,13 +2081,13 @@ def build_page(demo, gpu):
                               (impact_summary, {"value": impact_text}),
                               (impact_table, {"value": impact_rows}),
                               (impact_gal, {"value": impact_images(impact)}),
-                              (model_info, {"value": model_status(model, upscale_version) if upscale_on else ""})):
+                              (model_info, {"value": model_status(model, upscale_version) if upscale_on else ""}),
+                              (name_info, {"value": name_note(pname, trigger)})):
                 updates.setdefault(block._id, {}).update(kw)
         return [page_language(new)] + [gr.update(**updates[block._id]) for block in switch_outputs]
 
-    lang_btn.click(L(switch_language), [project, r_char, files_st, idx_st, t_char, t_search, t_goal, e_char,
-                                      e_out, version_pick, preview_state, impact_state, upscale_on, upscaler,
-                                      upscale_version],
+    lang_btn.click(L(switch_language), [project, char, files_st, idx_st, t_search, t_goal, e_out, version_pick,
+                                      preview_state, impact_state, upscale_on, upscaler, upscale_version, name],
                    [lang_box, *switch_outputs]).then(None, lang_box, None, js=set_direction)
     return texts
 

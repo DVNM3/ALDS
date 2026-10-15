@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 
 from alds import build, cancel, txn
+from alds.common import OWN_IMAGES
 from test_preservation import ProjectTest
 
 TAGS = {"solo": 1.0, "1girl": 1.0, "upper body": 1.0}
@@ -34,6 +35,8 @@ class PreviewTests(ProjectTest):
         detect = types.ModuleType("imgutils.detect")
         detect.detect_faces = lambda *a, **k: []
         detect.detect_eyes = lambda *a, **k: []
+        detect.detect_person = lambda *a, **k: []
+        detect.detect_heads = lambda *a, **k: []
         ocr = types.ModuleType("imgutils.ocr")
         ocr.ocr = lambda *a: []
         tagging = types.ModuleType("imgutils.tagging")
@@ -149,6 +152,65 @@ class PreviewTests(ProjectTest):
         self.assertEqual(Image.open(self.char / item["file"]).size, (round(64 * factor), round(48 * factor)))
         self.assertEqual(meta["settings"]["min_height"], 0.5)
         self.assertEqual(meta["settings"]["upscale_version"], "4")
+
+    def own_images(self, *names, size=(40, 30)):
+        own = self.p.char_dir("hero") / OWN_IMAGES
+        own.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            Image.new("RGBA" if name.endswith(".png") else "RGB", size, (200, 10, 10)).save(own / name)
+        return own
+
+    def full_build(self, clusters=(1,), own_refs=True, **kw):
+        enlarge = lambda img, factor, model, version: img.resize((round(img.width * factor),
+                                                                   round(img.height * factor)))
+        with patch.object(build, "upscale_image", side_effect=enlarge), \
+                patch.object(build, "ccip_features", return_value=np.array([[0.0, 1.0]], np.float32)), \
+                patch("alds.outfits.run_outfits", return_value=[]):
+            with txn.build_txn(self.p, "hero"):
+                build.run_build(self.p, "hero", list(clusters), None, 0.13, 1.0, 0.5, 0.8, None, True, "EVA02_Large",
+                                False, False, False, True, upscale_to=128,
+                                own_dir=self.p.char_dir("hero") / OWN_IMAGES, own_refs=own_refs, **kw)
+        return self.p.load("characters/hero/build.json")
+
+    def test_own_images_are_tagged_enlarged_and_added_with_the_scenes(self):
+        self.own_images("fanart.png", "shot.jpg")
+        meta = self.full_build()
+        own = [it for it in meta["items"] if it["type"] == "own"]
+        self.assertEqual(len(meta["items"]), 3)
+        self.assertEqual(sorted(it["own"] for it in own), ["fanart.png", "shot.jpg"])
+        for it in own:
+            png = self.char / it["file"]
+            self.assertTrue(png.name.startswith("own_"))
+            self.assertNotIn("_review", png.parts)
+            self.assertIn("hero", png.with_suffix(".txt").read_text(encoding="utf-8").split(", "))
+            self.assertGreater(it["upscaled"], 1)
+            self.assertEqual(Image.open(png).size, (round(40 * it["upscaled"]), round(30 * it["upscaled"])))
+        self.assertEqual(Image.open(self.char / own[0]["file"]).getpixel((0, 0)), (200, 10, 10))
+        stems = np.load(self.char / "ccip.npz")["stems"].tolist()
+        self.assertIn("own_fanart", stems)
+        report = (self.char / "report.txt").read_text(encoding="utf-8")
+        self.assertIn("2 of your images added", report)
+        self.assertTrue(meta["settings"]["own_refs"])
+
+    def test_own_images_alone_make_a_set_without_the_episodes(self):
+        self.own_images("a.png")
+        meta = self.full_build(clusters=(), own_refs=False)
+        self.assertEqual([it["type"] for it in meta["items"]], ["own"])
+        report = (self.char / "report.txt").read_text(encoding="utf-8")
+        self.assertIn("Step 1 of 3: Tagging your images\n", report)
+
+    def test_stopped_rebuild_puts_back_the_own_images(self):
+        from alds.pick import sync_images
+        own = self.own_images("a.png")
+        new = self.p.dir / "upload" / "b.png"
+        new.parent.mkdir()
+        Image.new("RGB", (8, 8)).save(new)
+        with self.assertRaises(cancel.Cancelled):
+            with txn.build_txn(self.p, "hero"):
+                sync_images(own, [new])
+                self.assertEqual(sorted(f.name for f in own.iterdir()), ["b.png"])
+                raise cancel.Cancelled()
+        self.assertEqual(sorted(f.name for f in own.iterdir()), ["a.png"])
 
     def test_failed_preview_restores_previous_preview_and_current_result(self):
         self.preview()

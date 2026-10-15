@@ -7,7 +7,7 @@ from pathlib import Path
 from . import negatives
 from .cache import file_hash, link_or_copy, unlinked
 from .cancel import check as check_cancel
-from .common import inside, load_json, plain_name, save_json
+from .common import OWN_IMAGES, inside, load_json, plain_name, save_json
 from .i18n import t
 from .outfits import token_matcher
 from .tags import BOX, apply_edit, load_box, load_edits, save_box, split_tags, strip_box
@@ -15,8 +15,8 @@ from .txn import Transaction
 
 PARTS = ("sorted", "_deleted", "_dropped", "_caption_history", "build.json", "emb.npz",
          "ccip.npz", "report.txt", "negatives.npz", "positives.npz", "confirmed", "review.json", "tag_edits.json",
-         BOX)
-KEPT_ON_REBUILD = ("negatives.npz", "positives.npz", "confirmed", "tag_edits.json", BOX)
+         BOX, OWN_IMAGES)
+KEPT_ON_REBUILD = ("negatives.npz", "positives.npz", "confirmed", "tag_edits.json", BOX, OWN_IMAGES)
 STORE = ".images"
 
 
@@ -195,9 +195,9 @@ def carry_review(project, name, version):
 
 
 @contextmanager
-def _with_backup(project, name, reason, replace, remove_if_new=()):
+def _with_backup(project, name, reason, replace, remove_if_new=(), keep=()):
     version = save_version(project, name, reason) if (project.char_dir(name) / "sorted").exists() else None
-    transaction = Transaction(project.dir, replace=replace, remove_if_new=remove_if_new)
+    transaction = Transaction(project.dir, keep=keep, replace=replace, remove_if_new=remove_if_new)
     try:
         with transaction:
             yield version
@@ -213,7 +213,7 @@ def rebuilding(project, name, ref_dir=None):
     char = project.char_dir(name)
     replace = [char / p for p in PARTS if p not in KEPT_ON_REBUILD] + [char / "_thumbs"]
     with _with_backup(project, name, "before rebuild", replace + ([Path(ref_dir)] if ref_dir else []),
-                      [char]) as version:
+                      [char], [char / OWN_IMAGES]) as version:
         yield
         if version:
             carry_review(project, name, version)

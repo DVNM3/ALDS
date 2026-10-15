@@ -149,12 +149,16 @@ def detect_repeats(project, min_len=40.0):
             print("  • " + t("Only one episode, and no other episode in its folder to compare it with"))
         else:
             p = project.path("scan/fp_ref.npy")
-            if proj.get("fp_ref") != str(ref) or not p.exists():
-                print("  • " + t("Reading {name} for the comparison (no frames are taken from it)...", name=ref.name))
-                np.save(p, fingerprint_video(ref))
-                proj["fp_ref"] = str(ref)
-            fps["ref"] = np.load(p)
-            pairs = [(vids[0]["id"], "ref")]
+            try:
+                if proj.get("fp_ref") != str(ref) or not p.exists():
+                    print("  • " + t("Reading {name} for the comparison (no frames are taken from it)...",
+                                     name=ref.name))
+                    np.save(p, fingerprint_video(ref))
+                    proj["fp_ref"] = str(ref)
+                fps["ref"] = np.load(p)
+                pairs = [(vids[0]["id"], "ref")]
+            except av.FFmpegError:
+                print("  • " + t("{name} couldn't be read, so it isn't used for the comparison", name=ref.name))
 
     marks = {v["id"]: [] for v in vids}
     for a, b in pairs:

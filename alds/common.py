@@ -9,6 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROJECTS_DIR = ROOT / "projects"
 VIDEO_EXTS = {".mkv", ".mp4", ".webm", ".avi", ".mov", ".m4v", ".ts"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+OWN_IMAGES = "own"
 DEFAULT_MIN_HEIGHT = 0.5
 FRAMING = {"close_up": "Close-up", "upper_body": "Upper body", "cowboy_shot": "Cowboy shot", "full_body": "Full body"}
 VIEW = {"front": "Front", "three_quarter": "Three-quarter", "side": "Side", "back": "Back", "above": "From above",
