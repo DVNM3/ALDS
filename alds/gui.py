@@ -992,8 +992,9 @@ def move_image(pname, char, flt, files, idx, target):
     from . import negatives
     if not files or not target:
         raise gr.Error(t("Pick an image and the target group"))
-    negatives.move_pair(Path(files[idx]), sorted_root(pname, char) / target)
-    return review_outputs(pname, char, list_files(pname, char, flt), idx)
+    dst = negatives.move_pair(Path(files[idx]), sorted_root(pname, char) / target)
+    files = list_files(pname, char, flt)
+    return review_outputs(pname, char, files, next((i for i, f in enumerate(files) if Path(f) == dst), idx))
 
 
 @guarded
@@ -1023,9 +1024,13 @@ def _tag_state(pname, char, query=""):
     return rows, status, list(cnt)
 
 
-def tag_view(pname, char, query=""):
+def tag_view(pname, char, query="", keep=()):
     rows, status, tags = _tag_state(pname, char, query)
-    return table(rows, TAG_COLUMNS), status, gr.update(choices=tags, value=[])
+    return table(rows, TAG_COLUMNS), status, gr.update(choices=tags, value=[s for s in keep or () if s in tags])
+
+
+def tag_search(pname, char, query, selected):
+    return tag_view(pname, char, query, selected)
 
 
 def pick_tag(selected, evt: gr.SelectData):
@@ -1601,7 +1606,7 @@ def build_page(demo, gpu):
 
     t_out = [t_table, t_status, t_selected]
     t_char.change(L(tag_view), [project, t_char, t_search], t_out)
-    t_search.change(L(tag_view), [project, t_char, t_search], t_out)
+    t_search.change(L(tag_search), [project, t_char, t_search, t_selected], t_out)
     t_table.select(pick_tag, t_selected, t_selected)
     t_remove_btn.click(L(tag_remove), [project, t_char, t_selected, t_search], t_out, concurrency_id="review")
     t_replace_btn.click(L(tag_replace), [project, t_char, t_selected, t_new, t_search], t_out, concurrency_id="review")

@@ -149,6 +149,29 @@ class GuiTests(ProjectTest):
         files = gui.list_files(self.p.name, "hero", "all")
         self.assertEqual([Path(f).stem for f in files], ["c", "b", "a"])
 
+    def test_moved_image_stays_selected_in_its_new_group(self):
+        char = self.write_build()
+        sorted_dir = char / "sorted"
+        for file in sorted_dir.rglob("*.png"):
+            Image.new("RGB", (64, 64), (100, 90, 120)).save(file)
+        meta = self.p.load("characters/hero/build.json")
+        for item in meta["items"]:
+            item.update(t=0, vid=1, type="full", ccip=0.12, sharp=100)
+        self.p.save("characters/hero/build.json", meta)
+        negatives.move_pair(sorted_dir / "upper_body" / "front" / "a.png", sorted_dir / "close_up" / "front")
+        files = gui.list_files(self.p.name, "hero", "all")
+        self.assertEqual([Path(f).stem for f in files], ["a", "b"])
+        with use("en"):
+            files, idx = gui.move_image(self.p.name, "hero", "all", files, 0, "upper_body/side")[4:6]
+            moved = sorted_dir / "upper_body" / "side" / "a.png"
+            self.assertEqual([Path(f).stem for f in files], ["b", "a"])
+            self.assertEqual(Path(files[idx]), moved)
+            self.assertTrue(moved.with_suffix(".txt").exists())
+            files = gui.list_files(self.p.name, "hero", "upper_body/side")
+            files, idx = gui.move_image(self.p.name, "hero", "upper_body/side", files, 0, "close_up/back")[4:6]
+            self.assertEqual((files, idx), ([], 0))
+            self.assertTrue((sorted_dir / "close_up" / "back" / "a.png").exists())
+
     def test_deleting_a_version_needs_confirmation(self):
         self.write_build()
         _, dropdown, _ = gui.do_version(self.p.name, "hero")
@@ -171,6 +194,19 @@ class GuiTests(ProjectTest):
             self.assertNotIn("solo", caption("b"))
             gui.tag_undo(self.p.name, "hero", "")
             self.assertIn("solo", caption("b"))
+
+    def test_searching_tags_keeps_the_ones_already_picked(self):
+        self.write_build(captions={"a": "hero, solo, smile", "b": "hero, solo, blush"})
+        with use("en"):
+            _, _, picked = gui.tag_search(self.p.name, "hero", "bl", ["smile", "gone"])
+            self.assertEqual(picked["value"], ["smile"])
+            self.assertIn("blush", picked["choices"])
+            self.assertEqual(gui.tag_search(self.p.name, "hero", "", None)[2]["value"], [])
+            self.assertEqual(gui.tag_view(self.p.name, "hero", "bl")[2]["value"], [])
+        ui = gui.build_ui("en")
+        search = [f for f in ui.fns.values() if f.fn and f.fn.__name__ == "tag_search"]
+        self.assertEqual(len(search), 1)
+        self.assertEqual(len(search[0].inputs), 4)
 
     def test_tag_edits_wait_for_the_character_being_rebuilt(self):
         char = self.write_build()
