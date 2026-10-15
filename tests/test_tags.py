@@ -1,6 +1,4 @@
 from collections import Counter
-from pathlib import Path
-from unittest.mock import patch
 
 from alds import captions, gui, tags, txn, versions
 from alds.i18n import use
