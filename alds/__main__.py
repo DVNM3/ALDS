@@ -59,7 +59,6 @@ def main(argv=None):
                    help="near-duplicate cutoff (WD14 embedding cosine; lower = stricter dedup)")
     p.add_argument("--keep-text", action="store_true", help="keep scenes with on-screen text (credits, titles)")
     p.add_argument("--series", help="series tag to put after the trigger, e.g. 'fairy tail'")
-    p.add_argument("--keep-core", action="store_true", help="keep hair/eye/body tags in captions")
     p.add_argument("--no-screencap-tag", action="store_true", help="don't prefix captions with 'anime screencap'")
     p.add_argument("--tagger", default="EVA02_Large", help="WD14 model: EVA02_Large, SwinV2_v3, ConvNext_v3, ViT_v3")
     p.add_argument("--keep-offmodel", action="store_true", help="keep scenes tagged chibi / super deformed / blurry")
@@ -102,6 +101,11 @@ def main(argv=None):
     p.add_argument("--replace", nargs="*", default=[], metavar="OLD=NEW", help="e.g. \"yellow eyes=brown eyes\"")
     p.add_argument("--add", nargs="*", default=[], help="tags to append to every caption")
     p.add_argument("--undo", action="store_true", help="undo the last bulk edit")
+    p.add_argument("--absorb", nargs="*", default=[], metavar="TAG",
+                   help="move tags into the trigger word: removed from every caption, remembered for --restore")
+    p.add_argument("--restore", nargs="*", default=[], metavar="TAG", help="put absorbed tags back where they were")
+    p.add_argument("--goal", choices=("character", "style", "outfit"),
+                   help="list the tags that matter for this kind of LoRA (* = in at least 20%% of the images)")
 
     p = sub.add_parser("export", help="flatten reviewed images into an AI Toolkit dataset folder")
     p.add_argument("-p", "--project", required=True)
@@ -196,7 +200,7 @@ def run_command(project, a):
             check_overwrite(project, a.name, a.overwrite)
         with txn.preview_txn(project, a.name) if a.preview else txn.build_txn(project, a.name):
             run_build(project, a.name, a.cluster, a.ref, a.threshold, a.relax, a.min_height, a.sim, a.series,
-                      a.keep_core, not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_offmodel,
+                      not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_offmodel,
                       a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh,
                       not a.no_auto_reject, a.keep_mono, a.preview, a.upscaler, a.upscaler_version)
     elif a.cmd == "restore-frames":
@@ -311,7 +315,7 @@ def run_reject(project, a):
 
 
 def run_tags(project, a):
-    from .tags import tag_counts, undo_last
+    from .tags import load_box, tag_counts, undo_last
     char_dir = project.char_dir(a.name)
     if not (char_dir / "sorted").exists():
         raise SystemExit(f"no built images for '{a.name}'")
@@ -319,6 +323,18 @@ def run_tags(project, a):
         print(f"[tags] restored {undo_last(char_dir)} captions")
         from .outfits import resync_after_undo
         resync_after_undo(project, a.name)
+    elif a.absorb or a.restore:
+        from .outfits import absorb_captions, restore_captions
+        if a.absorb:
+            print(f"[tags] moved into the trigger, changed {absorb_captions(project, a.name, a.absorb)} captions")
+        if a.restore:
+            print(f"[tags] put back, changed {restore_captions(project, a.name, a.restore)} captions")
+    elif a.goal:
+        from .captions import goal_suggestions
+        from .outfits import protected
+        cnt, n = tag_counts(char_dir)
+        for row in goal_suggestions(cnt, n, a.goal, protected(project, a.name)):
+            print(f"  {'*' if row['suggested'] else ' '} {row['count']:>5}  {row['category']:<15} {row['tag']}")
     elif a.remove or a.replace or a.add:
         try:
             replace = dict(r.split("=", 1) for r in a.replace)
@@ -331,6 +347,10 @@ def run_tags(project, a):
         print(f"[tags] {n} captions, {len(cnt)} distinct tags")
         for t, c in cnt.most_common():
             print(f"  {c:>5}  {100 * c / n:5.1f}%  {t}")
+        box = load_box(char_dir)
+        if box:
+            print("[tags] learned by the trigger (not in the captions): "
+                  + ", ".join(f"{t} ({len(where)})" for t, where in box.items()))
 
 
 if __name__ == "__main__":

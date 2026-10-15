@@ -38,6 +38,8 @@ class PreviewTests(ProjectTest):
         ocr.ocr = lambda *a: []
         tagging = types.ModuleType("imgutils.tagging")
         tagging.get_wd14_tags = lambda *a, **k: ({"safe": 1.0}, dict(self.tags), {}, np.array([1.0, 0.0]))
+        tagging.convert_wd14_emb_to_prediction = lambda emb, **k: [dict(self.tags) for _ in emb]
+        tagging.drop_overlap_tags = dict
         validate = types.ModuleType("imgutils.validate")
         validate.anime_portrait = lambda *a: ("upper_body", 1.0)
         self.stack.enter_context(patch.dict(sys.modules, {"imgutils.detect": detect, "imgutils.ocr": ocr,
@@ -53,7 +55,7 @@ class PreviewTests(ProjectTest):
 
     def preview(self, threshold=0.13, keep_text=False, min_height=0.5):
         with txn.Transaction(self.p.dir, replace=[self.out]):
-            return build.run_build(self.p, "hero", [1], None, threshold, 1.0, min_height, 0.8, None, False, True,
+            return build.run_build(self.p, "hero", [1], None, threshold, 1.0, min_height, 0.8, None, True,
                                    "EVA02_Large", keep_text, False, False, False, preview_limit=2)
 
     def reasons(self, result):
@@ -125,15 +127,21 @@ class PreviewTests(ProjectTest):
         def fake_upscale(img, factor, model, version):
             calls.append((img.size, model, version))
             return img.resize((round(img.width * factor), round(img.height * factor)))
+        self.tags["blue hair"] = 0.9
         with patch.object(build, "upscale_image", side_effect=fake_upscale), \
                 patch("alds.outfits.run_outfits", return_value=[]):
             with txn.build_txn(self.p, "hero"):
-                build.run_build(self.p, "hero", [1], None, 0.13, 1.0, 0.5, 0.8, None, False, True, "EVA02_Large",
+                build.run_build(self.p, "hero", [1], None, 0.13, 1.0, 0.5, 0.8, None, True, "EVA02_Large",
                                 False, False, False, True, upscale_to=128, upscaler="animesharp",
                                 upscale_version="4")
         meta = self.p.load("characters/hero/build.json")
         self.assertEqual(len(meta["items"]), 1)
         item = meta["items"][0]
+        self.assertIn("blue hair", item["caption"].split(", "))
+        self.assertEqual(meta["appearance_tags"], ["blue hair"])
+        report = (self.char / "report.txt").read_text(encoding="utf-8")
+        self.assertIn("should learn in the Tags tab): blue hair\n", report)
+        self.assertIn("comparing with the other images: -\n", report)
         self.assertEqual((item["type"], item["upscaler"]), ("scene", "animesharp"))
         self.assertEqual(calls, [((64, 48), "animesharp", "4")])
         factor = 128 / (64 * 48) ** 0.5

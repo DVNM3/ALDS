@@ -9,12 +9,13 @@ from .cache import file_hash, link_or_copy, unlinked
 from .cancel import check as check_cancel
 from .common import inside, load_json, plain_name, save_json
 from .outfits import token_matcher
-from .tags import apply_edit, load_edits, split_tags
+from .tags import BOX, apply_edit, load_box, load_edits, save_box, split_tags, strip_box
 from .txn import Transaction
 
 PARTS = ("sorted", "_deleted", "_dropped", "_caption_history", "build.json", "emb.npz",
-         "ccip.npz", "report.txt", "negatives.npz", "positives.npz", "confirmed", "review.json", "tag_edits.json")
-KEPT_ON_REBUILD = ("negatives.npz", "positives.npz", "confirmed", "tag_edits.json")
+         "ccip.npz", "report.txt", "negatives.npz", "positives.npz", "confirmed", "review.json", "tag_edits.json",
+         BOX)
+KEPT_ON_REBUILD = ("negatives.npz", "positives.npz", "confirmed", "tag_edits.json", BOX)
 STORE = ".images"
 
 
@@ -138,12 +139,13 @@ def carry_review(project, name, version):
     deleted = (set(state.get("removed", [])) | previous.keys()) - before.keys()
     captions, groups = state.get("captions", {}), state.get("groups", {})
     edits = load_edits(current)
+    box = load_box(current)
     old_token, new_token = token_matcher(meta, name), token_matcher(new_meta, name)
     for stem in before.keys() & previous.keys():
         prior = previous[stem]
         text = _text(before[stem])
         mine = [t for t in split_tags(text) if not old_token(t)] if text is not None else None
-        expected = ([t for t in replay(split_tags(prior["caption"]), edits) if not old_token(t)]
+        expected = ([t for t in strip_box(replay(split_tags(prior["caption"]), edits), box) if not old_token(t)]
                     if prior.get("caption") is not None else None)
         if mine is not None and mine != expected:
             captions[stem] = ", ".join(mine)
@@ -154,6 +156,9 @@ def carry_review(project, name, version):
             groups[stem] = str(rel)
         else:
             groups.pop(stem, None)
+    for entry in box.values():
+        for stem in after:
+            entry.pop(stem, None)
     changed = moved = removed = replayed = 0
     for stem, png in after.items():
         check_cancel()
@@ -163,11 +168,13 @@ def carry_review(project, name, version):
             continue
         fresh = _text(png)
         tags = split_tags(fresh or "")
+        rebuilt = strip_box(replay(tags, edits), box, stem)
         if stem in captions:
-            text = ", ".join(with_tokens(split_tags(captions[stem]), [t for t in tags if new_token(t)], trigger))
+            text = ", ".join(strip_box(with_tokens(split_tags(captions[stem]), [t for t in tags if new_token(t)],
+                                                trigger), box))
             changed += 1
         else:
-            text = ", ".join(replay(tags, edits)) if fresh is not None else None
+            text = ", ".join(rebuilt) if fresh is not None else None
         if text is not None and text != fresh:
             png.with_suffix(".txt").write_text(text, encoding="utf-8")
             replayed += stem not in captions
@@ -178,6 +185,7 @@ def carry_review(project, name, version):
             if png != dest:
                 negatives.move_pair(png, dest.parent)
                 moved += 1
+    save_box(current, box)
     save_json(current / "review.json", {"removed": sorted(deleted), "captions": captions, "groups": groups})
     print(f"[versions] review carried forward: {removed} removals, {changed} captions, {moved} groups"
           + (f", bulk tag edits applied to {replayed} new captions" if replayed else ""))

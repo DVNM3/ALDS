@@ -30,7 +30,7 @@ Making a character LoRA from an anime usually means hours of taking screenshots,
 - **Whole scenes, character alone.** Only the frames where your character is the only one on screen are used, uncut. Another detected person, or a tagger count such as `1girl` and `1boy`, leaves the scene out, and so does a character smaller than half the frame height (adjustable).
 - **Leaves out other characters.** The clusters you didn't pick show what the other characters look like, so images that resemble one of them more than yours are left out before you review.
 - **Filters out bad images.** On-screen text, dark or faded frames, black-and-white or sepia flashbacks, chibi and blurry drawings, and near-duplicates.
-- **Captions in Anima's style.** WD14 tags in Anima's order with your trigger word. Fixed features such as hair and eye colour are left to the trigger word.
+- **Captions in Anima's style.** WD14 tags in Anima's order with your trigger word. Every tag is written; you choose which ones the trigger word learns.
 - **Sorted by shot and angle.** From close-up to full body, and front, three-quarter, side, back, from above and from below.
 - **Separates outfits.** When the character wears more than one outfit, each outfit gets its own tag.
 - **Learns from your review.** Confirm clear images of the character, or reject another character. Doubtful images come first, and you can see the effect before building again.
@@ -53,7 +53,7 @@ Pictures taken from the episodes are blurred here; in the program they show as t
     </td>
     <td width="50%" valign="top">
       <a href="docs/screenshots/tags.png"><img src="docs/screenshots/tags.png" alt="Tag editor"></a>
-      <br><b>Tags.</b> Every tag in the captions with its count. Search, then remove, replace or add a tag in all captions at once, with undo.
+      <br><b>Tags.</b> Pick what the LoRA is for (character, style or outfit) and move the tags the trigger word should learn into it. Below, every tag with its count: remove, replace or add a tag in all captions at once, with undo.
     </td>
   </tr>
   <tr>
@@ -100,7 +100,7 @@ The tabs follow the work from left to right:
 | **1. Scan episodes** | Paste episode paths, or the path of a whole folder, and press “Start scanning”. The OP/ED is found automatically and its times show in the episodes table. “💾 Disk space” shows the project's size and cleans it up. |
 | **2. Pick the character** | Click your character's card (you can pick more than one) or upload reference images, type the trigger word and press “Build the image set”. If two characters got mixed in one card, select it and press “✂ Split”. |
 | **3. Review** | Opens by itself after a build, with the images marked ⚠ first. Remove what isn't right, fix a caption, move an image to another group, or show one outfit only. |
-| **4. Tags** | Every tag and how often it appears. Remove, replace or add a tag in all captions at once, with undo. |
+| **4. Tags** | Pick what the LoRA is for: character, style or outfit. The tags that matter for it are listed by kind (hair colour, haircut, hair ties, tattoos and marks, earrings, clothes...), and the ones in at least 20% of the images are checked. Moved tags leave every caption and sit in the trigger word box; put one back and it returns to the images it was in. Below, every tag and how often it appears: remove, replace or add a tag in all captions at once, with undo. |
 | **5. Save the result** | Choose a place; a folder named after the character is made there with the images and their caption files. That folder is your dataset. Afterwards you can delete the project to free space. |
 
 Review keys:
@@ -147,7 +147,8 @@ projects\<project>\
 | Removing duplicates | Visual similarity (WD14 embedding) ≥ 0.80; the sharpest image is kept. |
 | Tags | WD14 EVA02-Large, in Anima's style: lowercase, spaces instead of `_`. |
 | Caption order | `anime screencap, safe, 1boy, <trigger>, <series>, <tags...>` |
-| Fixed features | Hair and eye colours and the hairstyle are removed from the captions so the trigger word learns them (`--keep-core` keeps them). |
+| Fixed features | Every tag is written. In the Tags tab you move the ones the trigger word should learn (hair, eyes, tattoos...) out of the captions. |
+| Small details | Tattoos, hair ties and earrings are easy to miss. When one is clearly found in several images of the character, it is also accepted where the tagger was less sure (score 0.2 or more). |
 | Angle | Tags give side, back, from above and from below; where the eyes sit inside the face separates three-quarter from front. |
 | Outfits | Images grouped by their clothing tags and how they look, with a tag per outfit when there is more than one. |
 | Upscaling (optional) | Every scene smaller than 1024 pixels (the square root of its area) is enlarged with the model you choose, at most 4×. The model runs on small tiles, so it needs little graphics memory. |
@@ -204,7 +205,7 @@ alds.bat versions -p fairytail -n natsu_ft --delete VERSION_ID
 ```
 Take the ID from the list. Every rebuild saves the current result first, and so does restoring, so you can always go back. A version holds the images, captions, confirmations, rejections and reference images.
 
-When you rebuild, your review carries over to the images from the same episode and time: edited captions, group moves and removed images. Bulk tag edits are applied to the new images too, and outfit tags follow the new outfit split. If the rebuild fails or is stopped, the previous result comes back.
+When you rebuild, your review carries over to the images from the same episode and time: edited captions, group moves and removed images. Bulk tag edits are applied to the new images too, tags in the trigger word box stay out of the captions, and outfit tags follow the new outfit split. If the rebuild fails or is stopped, the previous result comes back.
 
 ### review
 In the interface, or by hand: open the `sorted` folder and delete every image that isn't the character, starting with `_review`. The `.txt` captions can be edited too.
@@ -222,11 +223,15 @@ alds.bat confirm -p fairytail -n natsu_ft --remove v01_00616.0s_full.png
 alds.bat feedback -p fairytail -n natsu_ft
 alds.bat tags -p fairytail -n natsu_ft --remove parody --replace "yellow eyes=brown eyes"
 alds.bat tags -p fairytail -n natsu_ft --undo
+alds.bat tags -p fairytail -n natsu_ft --goal character
+alds.bat tags -p fairytail -n natsu_ft --absorb "pink hair" "shoulder tattoo"
+alds.bat tags -p fairytail -n natsu_ft --restore "shoulder tattoo"
 alds.bat outfits -p fairytail -n natsu_ft
 ```
 - `reject` learns an image as another character and lists the ones that look like it; `--clear` forgets all rejections.
 - `confirm` without image names lists the confirmations; `--remove` takes one back. `feedback` prints the same comparison as the preview.
 - `tags` without options lists every tag and its count. Outfit tags can be renamed with a replace, such as `natsu_ft_outfit1=natsu_ft_coat`.
+- `--goal character|style|outfit` lists the tags that matter for that kind of LoRA (`*` = in at least 20% of the images). `--absorb` moves tags into the trigger word (out of every caption); `--restore` puts them back where they were.
 - `outfits` separates the outfits again after images were removed; `--no-outfits` on `build` skips them.
 
 ### export

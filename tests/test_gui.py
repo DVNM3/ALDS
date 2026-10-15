@@ -265,7 +265,7 @@ class GuiTests(ProjectTest):
             names, current = [], start
             while current := next((f for f in fns if f.trigger_after == current._id), None):
                 names.append(current.fn.__name__ if current.fn else None)
-            self.assertEqual(names[:4], ["change_char", "version_choices", "tag_view", "save_summary"])
+            self.assertEqual(names[:4], ["change_char", "version_choices", "tag_views", "save_summary"])
 
     def test_long_actions_free_the_models_when_done(self):
         module = types.ModuleType("imgutils.fake")

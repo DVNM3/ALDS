@@ -216,8 +216,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
         </div>
         <div class="card">
           <h3 class="en">Captions in Anima's style</h3><h3 class="ar">أوصاف بأسلوب Anima</h3>
-          <p class="en">WD14 tags in Anima's order with your trigger word. Fixed features such as hair and eye colour are left to the trigger word.</p>
-          <p class="ar">وسوم WD14 بترتيب Anima مع كلمة التفعيل، وتُترك الصفات الثابتة كلون الشعر والعينين لكلمة التفعيل.</p>
+          <p class="en">WD14 tags in Anima's order with your trigger word. Every tag is written; you choose which ones the trigger word learns.</p>
+          <p class="ar">وسوم WD14 بترتيب Anima مع كلمة التفعيل. تُكتب كل الوسوم، وأنت تختار ما تتعلمه كلمة التفعيل منها.</p>
         </div>
         <div class="card">
           <h3 class="en">Sorted by shot and angle</h3><h3 class="ar">مرتّبة حسب اللقطة والزاوية</h3>
@@ -272,8 +272,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
         </figure>
         <figure>
           <a href="screenshots/tags.png"><img class="shot" src="screenshots/tags.png" width="1280" height="1025" loading="lazy" alt="Tag editor"></a>
-          <figcaption class="en"><b>Tags.</b> Every tag in the captions with its count. Search, then remove, replace or add a tag in all captions at once, with undo.</figcaption>
-          <figcaption class="ar"><b>الوسوم.</b> كل الوسوم في الأوصاف وعدد ظهورها. ابحث، ثم احذف أو استبدل أو أضف وسمًا في كل الأوصاف دفعة واحدة، مع التراجع.</figcaption>
+          <figcaption class="en"><b>Tags.</b> Pick what the LoRA is for (character, style or outfit) and move the tags the trigger word should learn into it. Below, every tag with its count: remove, replace or add a tag in all captions at once, with undo.</figcaption>
+          <figcaption class="ar"><b>الوسوم.</b> اختر غرض اللورا (شخصية أو ستايل أو ملابس) وانقل الوسوم التي تتعلمها كلمة التفعيل إليها. وفي الأسفل كل الوسوم وعدد ظهورها: احذف أو استبدل أو أضف وسمًا في كل الأوصاف دفعة واحدة، مع التراجع.</figcaption>
         </figure>
         <figure>
           <a href="screenshots/save.png"><img class="shot" src="screenshots/save.png" width="1280" height="1000" loading="lazy" alt="Save the result"></a>
@@ -358,8 +358,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
         </div>
         <div class="step">
           <h3 class="en">Tags</h3><h3 class="ar">الوسوم</h3>
-          <p class="en">Every tag and how often it appears. Remove, replace or add a tag in all captions at once, with undo.</p>
-          <p class="ar">كل الوسوم وعدد ظهورها. احذف أو استبدل أو أضف وسمًا في كل الأوصاف دفعة واحدة، مع التراجع.</p>
+          <p class="en">Pick what the LoRA is for: character, style or outfit. The tags that matter for it are listed by kind (hair colour, haircut, hair ties, tattoos, earrings, clothes...). Move the ones the trigger word should learn into it, and put any back later. Below, every tag and how often it appears, with remove, replace, add and undo.</p>
+          <p class="ar">اختر غرض اللورا: شخصية أو ستايل أو ملابس. تظهر الوسوم المهمة له مجمّعة حسب النوع (لون الشعر، قصته، ربطات الشعر، الوشم، الأقراط، الملابس...). انقل ما تريد أن تتعلمه كلمة التفعيل إليها، وأعد أيًّا منها متى شئت. وفي الأسفل كل الوسوم وعدد ظهورها، مع الحذف والاستبدال والإضافة والتراجع.</p>
         </div>
         <div class="step">
           <h3 class="en">Save the result</h3><h3 class="ar">حفظ الناتج</h3>
@@ -454,7 +454,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
           <tr><td>Removing duplicates</td><td class="desc">Visual similarity (WD14 embedding) ≥ 0.80; the sharpest image is kept.</td></tr>
           <tr><td>Tags</td><td class="desc">WD14 EVA02-Large, in Anima's style: lowercase, spaces instead of <code>_</code>.</td></tr>
           <tr><td>Caption order</td><td class="desc"><code>anime screencap, safe, 1boy, &lt;trigger&gt;, &lt;series&gt;, &lt;tags...&gt;</code></td></tr>
-          <tr><td>Fixed features</td><td class="desc">Hair and eye colours and the hairstyle are removed from the captions so the trigger word learns them (<code>--keep-core</code> keeps them).</td></tr>
+          <tr><td>Fixed features</td><td class="desc">Every tag is written. In the Tags tab you move the ones the trigger word should learn (hair, eyes, tattoos...) out of the captions.</td></tr>
+          <tr><td>Small details</td><td class="desc">Tattoos, hair ties and earrings are easy to miss. When one is clearly found in several images of the character, it is also accepted where the tagger was less sure (score 0.2 or more).</td></tr>
           <tr><td>Angle</td><td class="desc">Tags give side, back, from above and from below; where the eyes sit inside the face separates three-quarter from front.</td></tr>
           <tr><td>Outfits</td><td class="desc">Images grouped by their clothing tags and how they look, with a tag per outfit when there is more than one.</td></tr>
           <tr><td>Upscaling (optional)</td><td class="desc">Every scene smaller than 1024 pixels is enlarged with the model you choose, at most 4×, in small tiles that need little graphics memory.</td></tr>
@@ -468,7 +469,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
           <tr><td>إزالة التكرار</td><td class="desc">التشابه البصري (تضمين WD14) ≥ 0.80، ويُبقى الأوضح.</td></tr>
           <tr><td>الوسوم</td><td class="desc">WD14 EVA02-Large بأسلوب Anima: أحرف صغيرة ومسافات بدل <code>_</code>.</td></tr>
           <tr><td>ترتيب الوصف</td><td class="desc"><code>anime screencap, safe, 1boy, &lt;trigger&gt;, &lt;series&gt;, &lt;tags...&gt;</code></td></tr>
-          <tr><td>الصفات الثابتة</td><td class="desc">تُحذف ألوان الشعر والعينين وتسريحة الشعر من الأوصاف لتتعلمها كلمة التفعيل (<code>--keep-core</code> يُبقيها).</td></tr>
+          <tr><td>الصفات الثابتة</td><td class="desc">تُكتب كل الوسوم. وفي تبويب الوسوم تنقل ما تريد أن تتعلمه كلمة التفعيل (الشعر، العينان، الوشم...) خارج الأوصاف.</td></tr>
+          <tr><td>التفاصيل الصغيرة</td><td class="desc">الوشم وربطات الشعر والأقراط يسهل أن تفوت الموسِّم. إذا ظهر أحدها بوضوح في عدة صور للشخصية، يُقبل أيضًا حيث كان الموسِّم أقل ثقة (درجة 0.2 فأكثر).</td></tr>
           <tr><td>الزاوية</td><td class="desc">الوسوم تحدد الجانب والخلف والأعلى والأسفل، وموضع العينين في الوجه يفرّق بين ثلاثة أرباع والأمام.</td></tr>
           <tr><td>الأزياء</td><td class="desc">تُجمَّع الصور حسب وسوم الملابس وشكلها، ولكل زي وسم إن كان هناك أكثر من زي.</td></tr>
           <tr><td>التكبير (اختياري)</td><td class="desc">كل مشهد أصغر من 1024 بكسل يُكبَّر بالموديل الذي تختاره، بحد أقصى 4×، على أجزاء صغيرة لا تحتاج ذاكرة كبيرة من كرت الشاشة.</td></tr>

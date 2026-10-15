@@ -7,6 +7,8 @@ from .common import load_json, save_json
 
 HISTORY_KEEP = 20
 EDITS = "tag_edits.json"
+BOX = "trigger_tags.json"
+BOX_KEY = ":box"
 
 
 def split_tags(text: str):
@@ -27,7 +29,10 @@ def _snapshot(char_dir: Path, files):
     hist = char_dir / "_caption_history"
     hist.mkdir(exist_ok=True)
     data = {f.name: f.read_text(encoding="utf-8") for f in files}
-    (hist / f"{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() % 10**6:06d}.json").write_text(
+    data[BOX_KEY] = load_box(char_dir)
+    second = time.strftime("%Y%m%d-%H%M%S")
+    same = [int(f.stem.rsplit("-", 1)[1]) for f in hist.glob(f"{second}-*.json") if f.stem.rsplit("-", 1)[1].isdigit()]
+    (hist / f"{second}-{max(same, default=-1) + 1:06d}.json").write_text(
         json.dumps(data, ensure_ascii=False), encoding="utf-8")
     for old in sorted(hist.glob("*.json"))[:-HISTORY_KEEP]:
         old.unlink()
@@ -80,6 +85,7 @@ def undo_last(char_dir: Path) -> int:
     if not snaps:
         raise SystemExit("nothing to undo")
     data = json.loads(snaps[-1].read_text(encoding="utf-8"))
+    box = data.pop(BOX_KEY, None)
     where = {f.name: f for f in caption_files(char_dir)}
     restored = 0
     for name, text in data.items():
@@ -88,9 +94,101 @@ def undo_last(char_dir: Path) -> int:
             restored += 1
     snaps[-1].unlink()
     _save_edits(char_dir, load_edits(char_dir)[:-1])
+    if box is not None:
+        save_box(char_dir, box)
     return restored
 
 
 def history_size(char_dir: Path) -> int:
     hist = char_dir / "_caption_history"
     return len(list(hist.glob("*.json"))) if hist.exists() else 0
+
+
+def load_box(char_dir: Path):
+    return load_json(Path(char_dir) / BOX, {})
+
+
+def save_box(char_dir: Path, box):
+    if box:
+        save_json(Path(char_dir) / BOX, box)
+    else:
+        (Path(char_dir) / BOX).unlink(missing_ok=True)
+
+
+def strip_box(tags, box, stem=None):
+    kept = []
+    for i, t in enumerate(tags):
+        if t in box:
+            if stem is not None:
+                box[t][stem] = tags[i - 1] if i else ""
+            continue
+        kept.append(t)
+    return kept
+
+
+def anchors(tags, wanted, box, stem):
+    found = {}
+    for t, prev in wanted.items():
+        seen = set()
+        while prev and prev not in tags and prev not in wanted and stem in box.get(prev, {}) and prev not in seen:
+            seen.add(prev)
+            prev = box[prev][stem]
+        found[t] = prev
+    return found
+
+
+def put_back(tags, wanted):
+    tags, pending = list(tags), dict(wanted)
+    while pending:
+        ready = [t for t, prev in pending.items() if not prev or prev in tags]
+        if not ready:
+            break
+        for t in ready:
+            prev = pending.pop(t)
+            if t not in tags:
+                tags.insert(tags.index(prev) + 1 if prev else 0, t)
+    return tags + [t for t in pending if t not in tags]
+
+
+def absorb(char_dir: Path, tags, is_token=lambda tag: False) -> int:
+    files = caption_files(char_dir)
+    tags = [t for t in dict.fromkeys(t.strip() for t in tags) if t and not is_token(t)]
+    if not files or not tags:
+        return 0
+    _snapshot(char_dir, files)
+    _save_edits(char_dir, load_edits(char_dir) + [{"remove": [], "replace": {}, "add": [], "trigger": tags}])
+    box = load_box(char_dir)
+    moving = {t: box.setdefault(t, {}) for t in tags}
+    changed = 0
+    for f in files:
+        old = split_tags(f.read_text(encoding="utf-8"))
+        new = strip_box(old, moving, f.stem)
+        if new != old:
+            f.write_text(", ".join(new), encoding="utf-8")
+            changed += 1
+    save_box(char_dir, box)
+    return changed
+
+
+def restore(char_dir: Path, tags) -> int:
+    files = caption_files(char_dir)
+    box = load_box(char_dir)
+    tags = [t for t in dict.fromkeys(tags) if t in box]
+    if not tags:
+        return 0
+    _snapshot(char_dir, files)
+    _save_edits(char_dir, load_edits(char_dir) + [{"remove": [], "replace": {}, "add": [], "restore": tags}])
+    changed = 0
+    for f in files:
+        wanted = {t: box[t][f.stem] for t in tags if f.stem in box[t]}
+        if not wanted:
+            continue
+        old = split_tags(f.read_text(encoding="utf-8"))
+        new = put_back(old, anchors(old, wanted, box, f.stem))
+        if new != old:
+            f.write_text(", ".join(new), encoding="utf-8")
+            changed += 1
+    for t in tags:
+        del box[t]
+    save_box(char_dir, box)
+    return changed

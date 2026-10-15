@@ -12,7 +12,8 @@ from tqdm import tqdm
 from .angles import face_pose
 from .cache import CropCache, digest, link_or_copy
 from .cancel import check as check_cancel
-from .captions import FRAMING_TAGS, classify, find_core_tags, make_caption, people_count
+from .captions import (FRAMING_TAGS, appearance_tags, classify, low_scores, make_caption, people_count,
+                       recover_details)
 from .common import box_area, box_iou, frame_in_use, save_json
 from .identity import ccip_cross, ccip_features
 from . import negatives, positives
@@ -182,7 +183,7 @@ def check_overwrite(project, name, overwrite):
 
 
 def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height, sim, series,
-              keep_core, screencap, tagger, keep_text, keep_offmodel, save_dropped, overwrite,
+              screencap, tagger, keep_text, keep_offmodel, save_dropped, overwrite,
               upscale_to=0, outfits=True, fresh=False, auto_reject=True, keep_mono=False, preview_limit=0,
               upscaler=DEFAULT_UPSCALER, upscale_version="auto"):
     from imgutils.ocr import ocr
@@ -338,7 +339,16 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
             raise SystemExit("no usable scenes after filtering - preview the settings before rebuilding")
 
         from imgutils.detect import detect_eyes, detect_faces
-        core = set() if keep_core else find_core_tags([it["general"] for it in keep])
+        recovered = Counter()
+        try:
+            found, recovered = recover_details([it["general"] for it in keep],
+                                               low_scores([it["emb"] for it in keep], tagger))
+        except Exception as e:
+            found = [it["general"] for it in keep]
+            print(f"[build] small details were not checked again: {e}")
+        for it, general in zip(keep, found):
+            it["caption_tags"] = general
+        appearance = appearance_tags(found)
         review_cut = threshold * 0.85
         meta, dist, n_review, n_up, stems, embs, ccips = [], Counter(), 0, 0, [], [], []
         sizes = {v["id"]: (v["width"], v["height"]) for v in project.load("project.json")["videos"]}
@@ -373,7 +383,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                               lambda: (upscale_image(frame_img(fr), factor, upscaler, upscale_version) if factor > 1
                                        else frame_img(fr)))
             link_or_copy(png, folder / f"{stem}.png")
-            caption = make_caption(name, it["rating"], it["general"], core, series, screencap)
+            caption = make_caption(name, it["rating"], it["caption_tags"], series, screencap)
             (folder / f"{stem}.txt").write_text(caption, encoding="utf-8")
             dist[(framing, view)] += 1
             meta.append({"file": str((folder / f"{stem}.png").relative_to(out_dir)), "det": it["det"], "vid": fr["vid"],
@@ -389,20 +399,20 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
     project.save(f"characters/{out_dir.name}/build.json",
                  {"name": name, "series": series, "clusters": cluster_ids, "other_clusters": other_ids,
                   "ref_dir": str(ref_dir) if ref_dir else None,
-                  "threshold": threshold, "core_tags": sorted(core), "items": meta,
+                  "threshold": threshold, "appearance_tags": appearance, "items": meta,
                   "settings": {"threshold": threshold, "relax": relax, "min_height": min_height, "sim": sim,
                                "tagger": tagger, "upscale_to": upscale_to, "upscaler": upscaler if upscale_to else None,
                                "upscale_version": upscale_version if upscale_to else None,
                                "outfits": outfits, "auto_reject": auto_reject, "keep_mono": keep_mono,
                                "keep_text": keep_text, "keep_offmodel": keep_offmodel,
-                               "keep_core": keep_core, "screencap": screencap}})
+                               "screencap": screencap}})
     outfit_lines = []
     if outfits:
         from .outfits import run_outfits
         found = run_outfits(project, name)
         outfit_lines = [f"Outfit {o['token']}: {o['count']} images - {', '.join(o['tags'])}" for o in found]
-    report = make_report(name, keep, core, dist, n_review, len(chosen), n_track, dropped, best_scores, threshold,
-                         n_up, upscale_to, min_height, outfit_lines, others_line, upscaler, upscale_version)
+    report = make_report(name, keep, appearance, recovered, dist, n_review, len(chosen), n_track, dropped, best_scores,
+                         threshold, n_up, upscale_to, min_height, outfit_lines, others_line, upscaler, upscale_version)
     (out_dir / "report.txt").write_text(report, encoding="utf-8")
     print(report)
     print(f"Review:  {sorted_dir}\n  - check the _review folder first, delete anything that is not {name}\n"
@@ -416,7 +426,7 @@ def score_histogram(scores):
     return "  ".join(f"{l}:{c}" for l, c in zip(labels, counts))
 
 
-def make_report(name, keep, core, dist, n_review, n_frames, n_track, dropped, best_scores, threshold,
+def make_report(name, keep, appearance, recovered, dist, n_review, n_frames, n_track, dropped, best_scores, threshold,
                 n_up, upscale_to, min_height, outfit_lines=(), others_line="", upscaler=DEFAULT_UPSCALER,
                 upscale_version="auto"):
     lines = [f"Character: {name}",
@@ -430,13 +440,16 @@ def make_report(name, keep, core, dist, n_review, n_frames, n_track, dropped, be
              + ("" if upscale_version == "auto" else f", {upscale_version}x version")
              + f", to ~{upscale_to}px: {n_up}"
              if upscale_to else "Upscaling: off",
-             f"Core tags removed from captions (absorbed by '{name}'): {', '.join(sorted(core)) or '-'}",
+             f"Appearance tags (all kept; move the ones '{name}' should learn in the Tags tab): "
+             f"{', '.join(appearance) or '-'}",
+             "Small details also found by comparing with the other images: "
+             + (", ".join(f"{t} +{c}" for t, c in recovered.most_common()) or "-"),
              *(outfit_lines or ["Outfits: one outfit (no outfit tokens)"]), "",
              "framing \\ view   " + "".join(f"{'3/4' if v == 'three_quarter' else v:>8}" for v in VIEWS) + "   total"]
     for f in FRAMINGS:
         row = [dist[(f, v)] for v in VIEWS]
         if sum(row):
             lines.append(f"{f:<16} " + "".join(f"{x:>8}" for x in row) + f"{sum(row):>8}")
-    tag_cnt = Counter(t for it in keep for t in it["general"] if t not in core)
+    tag_cnt = Counter(t for it in keep for t in it["caption_tags"])
     lines += ["", "Most common tags: " + ", ".join(f"{t} ({c})" for t, c in tag_cnt.most_common(30)), ""]
     return "\n".join(lines)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .tags import edit_tags, split_tags
+from .tags import absorb, edit_tags, restore, split_tags
 
 GARMENTS = {
     "shirt", "jacket", "coat", "vest", "dress", "uniform", "kimono", "yukata", "armor", "armour", "swimsuit",
@@ -48,6 +48,22 @@ def edit_captions(project, char, remove=(), replace=None, add=()):
     changed = edit_tags(char_dir, remove, replace, add, is_token)
     sync_tokens(project, char, remove, replace)
     return changed
+
+
+def protected(project, char):
+    char_dir = project.char_dir(char)
+    build = project.load(f"characters/{char_dir.name}/build.json", {})
+    is_token = token_matcher(build, char)
+    fixed = {build.get("name", char), build.get("series")}
+    return lambda tag: is_token(tag) or tag in fixed
+
+
+def absorb_captions(project, char, tags):
+    return absorb(project.char_dir(char), tags, protected(project, char))
+
+
+def restore_captions(project, char, tags):
+    return restore(project.char_dir(char), tags)
 
 
 def sync_tokens(project, char, remove=(), replace=None):

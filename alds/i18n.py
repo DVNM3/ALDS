@@ -299,7 +299,6 @@ AR = {
     "Separate outfits automatically (a tag per outfit after the trigger word)":
         "فصل الأزياء تلقائيًا (وسم لكل زي بعد كلمة التفعيل)",
     "Put anime screencap at the start of every caption": "وسم anime screencap في أول كل وصف",
-    "Keep hair and eye tags in the captions": "إبقاء صفات الشعر والعيون في الوصف",
     "Keep images with text on screen": "إبقاء الصور التي فيها نصوص",
     "Keep chibi and blurry drawings": "إبقاء الرسم المصغّر (chibi) والضبابي",
     "Keep black-and-white and sepia images (flashbacks)": "إبقاء الصور بالأبيض والأسود والبني (مشاهد الذكريات)",
@@ -375,10 +374,49 @@ AR = {
     "Caption saved": "تم حفظ الوصف",
 
     "4. Tags": "٤. الوسوم",
-    "All tags in the character's captions and how often they appear. Click a tag in the table to select it, then "
-    "remove or replace it in **all** captions at once. Every change can be undone.":
-        "كل الوسوم في أوصاف الشخصية وعدد مرات ظهورها. اضغط على وسم في الجدول لتحديده، "
-        "ثم احذفه أو استبدله في **كل** الأوصاف دفعة واحدة. كل تعديل يمكن التراجع عنه.",
+    "Every tag the tagger found is in the captions. Pick what the LoRA is for to see the tags that matter for it, "
+    "then move the ones the trigger word should learn into the trigger word. Below are all the tags and how often "
+    "they appear: remove, replace or add tags in **all** captions at once. Every change can be undone.":
+        "كل وسم وجده الموسِّم موجود في الأوصاف. اختر غرض اللورا لتظهر الوسوم المهمة له، ثم انقل ما تريد أن "
+        "تتعلمه كلمة التفعيل إليها. وفي الأسفل كل الوسوم وعدد مرات ظهورها: احذف أو استبدل أو أضف وسومًا في "
+        "**كل** الأوصاف دفعة واحدة. كل تعديل يمكن التراجع عنه.",
+    "What is the LoRA for?": "ما غرض اللورا؟",
+    "🧑 Character": "🧑 شخصية",
+    "🖌 Style": "🖌 ستايل",
+    "👕 Outfit": "👕 ملابس",
+    "Tags for this goal (checked = in at least 20% of the images)":
+        "وسوم هذا الغرض (المحدَّد = يظهر في 20% من الصور على الأقل)",
+    "🔒 Move the checked into the trigger word": "🔒 انقل المحدَّد إلى كلمة التفعيل",
+    "🔒 Learned by the trigger word (not in the captions)": "🔒 تتعلّمها كلمة التفعيل (ليست في الأوصاف)",
+    "↩ Put the checked back in the captions": "↩ أعد المحدَّد إلى الأوصاف",
+    "🔒 Move the selected into the trigger word": "🔒 انقل المحدد إلى كلمة التفعيل",
+    "No tags of this kind in the captions.": "لا توجد وسوم من هذا النوع في الأوصاف.",
+    "Removed from every caption, so the trigger word learns them as part of the character. The number is how many "
+    "images had the tag. Check a tag and put it back to return it to those images.":
+        "حُذفت من كل الأوصاف، فتتعلمها كلمة التفعيل كجزء من الشخصية. الرقم هو عدد الصور التي كان فيها الوسم. "
+        "حدّد وسمًا وأعده ليرجع إلى تلك الصور في مكانه.",
+    "Empty. Tags you move here are removed from every caption, so the trigger word learns them as part of the "
+    "character.":
+        "فارغة. الوسوم التي تنقلها إلى هنا تُحذف من كل الأوصاف، فتتعلمها كلمة التفعيل كجزء من الشخصية.",
+    "Removed when these images were made by an older version: {tags}. Rebuild the character to get every tag back "
+    "in the captions.":
+        "حُذفت عند صنع هذه الصور بإصدار أقدم: {tags}. أعد بناء الشخصية لتعود كل الوسوم إلى الأوصاف.",
+    "Check one or more tags first": "حدّد وسمًا أو أكثر أولًا",
+    "The trigger word, the series and the outfit tags stay in the captions":
+        "كلمة التفعيل واسم السلسلة ووسوم الأزياء تبقى في الأوصاف",
+    "Moved into the trigger word: {tags}. Changed {n} captions.": "نُقل إلى كلمة التفعيل: {tags}. عُدّل {n} وصف.",
+    "Put back in the captions: {tags}. Changed {n} captions.": "أُعيد إلى الأوصاف: {tags}. عُدّل {n} وصف.",
+    "hair colour": "لون الشعر",
+    "hair length": "طول الشعر",
+    "haircut and hairstyle": "قصة الشعر وتسريحته",
+    "hair ties and accessories": "ربطات الشعر وإكسسواراته",
+    "eyes and eyebrows": "العينان والحاجبان",
+    "tattoos, scars and marks": "الوشم والندوب والعلامات",
+    "earrings and piercings": "الأقراط والثقوب",
+    "makeup and nails": "المكياج والأظافر",
+    "body": "الجسم",
+    "clothes and accessories": "الملابس والإكسسوارات",
+    "drawing style": "أسلوب الرسم",
     "Search": "بحث",
     "Tag": "الوسم",
     "Count": "العدد",

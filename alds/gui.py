@@ -104,7 +104,6 @@ def build_options():
     return [(t("Leave out other characters, using the clusters you didn't pick"), "auto_reject"),
             (t("Separate outfits automatically (a tag per outfit after the trigger word)"), "outfits"),
             (t("Put anime screencap at the start of every caption"), "screencap"),
-            (t("Keep hair and eye tags in the captions"), "keep_core"),
             (t("Keep images with text on screen"), "keep_text"),
             (t("Keep chibi and blurry drawings"), "keep_offmodel"),
             (t("Keep black-and-white and sepia images (flashbacks)"), "keep_mono"),
@@ -116,6 +115,7 @@ CSS = """
 html[dir="rtl"] .gradio-container, html[dir="rtl"] .gradio-container [dir="ltr"] { direction: rtl; }
 html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container .body-cell .text { text-align: right; }
 .gradio-container .body-cell .text, .gradio-container .caption-label { unicode-bidi: plaintext; }
+.tag-choices label span { unicode-bidi: plaintext; }
 .slider_input_container, input[type=range] { direction: ltr; }
 .ltr textarea, .ltr input { direction: ltr !important; text-align: left !important; }
 #log textarea { direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 12px; }
@@ -214,6 +214,12 @@ new MutationObserver(aldsDecorateModels).observe(document.documentElement, {chil
 
 VIDEO_COLUMNS = ["#", "Episode", "Length (min)", "Frames", "Left out automatically"]
 TAG_COLUMNS = ["Tag", "Count", "%"]
+GOAL_ICONS = {"hair_colour": "🎨", "hair_length": "📏", "hairstyle": "💇", "hair_accessory": "🎀", "eyes": "👁",
+              "marks": "🖋", "piercing": "💎", "makeup": "💄", "body": "🧍", "clothing": "👕", "style": "🖌"}
+CATEGORY_NAMES = {"hair_colour": "hair colour", "hair_length": "hair length", "hairstyle": "haircut and hairstyle",
+                  "hair_accessory": "hair ties and accessories", "eyes": "eyes and eyebrows",
+                  "marks": "tattoos, scars and marks", "piercing": "earrings and piercings", "makeup": "makeup and nails",
+                  "body": "body", "clothing": "clothes and accessories", "style": "drawing style"}
 GROUP_COLUMNS = ["Shot", "Angle", "Count"]
 _session_langs = {}
 
@@ -517,7 +523,7 @@ def do_build(pname, selected, ref_files, name, series, upscale_on, upscaler, ups
             for f in ref_files:
                 shutil.copy2(f, ref_dir / Path(f).name)
         return run_build(p, name, ids, ref_dir, threshold, relax, min_height / 100, sim,
-                  (series or "").strip() or None, "keep_core" in opts, "screencap" in opts, tagger,
+                  (series or "").strip() or None, "screencap" in opts, tagger,
                   "keep_text" in opts, "keep_offmodel" in opts, "save_dropped" in opts,
                   overwrite, int(upscale_to) if upscale_on else 0, "outfits" in opts, "fresh" in opts,
                   "auto_reject" in opts, "keep_mono" in opts, 12 if preview else 0, upscaler, upscale_version)
@@ -1041,37 +1047,106 @@ def pick_tag(selected, evt: gr.SelectData):
     return sel
 
 
+def goal_choices():
+    return [(t("🧑 Character"), "character"), (t("🖌 Style"), "style"), (t("👕 Outfit"), "outfit")]
+
+
+def _goal_state(pname, char, goal):
+    from .captions import goal_suggestions
+    from .outfits import protected
+    from .tags import load_box, tag_counts
+    char_dir = char_dir_of(pname, char) if pname and char else None
+    if not char_dir or not (char_dir / "sorted").exists():
+        return [], [], "", [], ""
+    p = Project(safe_name(pname))
+    cnt, n = tag_counts(char_dir)
+    rows = goal_suggestions(cnt, n, goal or "character", protected(p, char))
+    choices = [(f"{GOAL_ICONS[r['category']]} {r['tag']} · {r['count']}", r["tag"]) for r in rows]
+    present = dict.fromkeys(r["category"] for r in rows)
+    legend = ("  ".join(f"{GOAL_ICONS[c]} {t(CATEGORY_NAMES[c])}" for c in present) if rows
+              else t("No tags of this kind in the captions."))
+    box = load_box(char_dir)
+    note = (t("Removed from every caption, so the trigger word learns them as part of the character. The number "
+              "is how many images had the tag. Check a tag and put it back to return it to those images.") if box
+            else t("Empty. Tags you move here are removed from every caption, so the trigger word learns them as "
+                   "part of the character."))
+    old = p.load(f"characters/{char_dir.name}/build.json", {}).get("core_tags")
+    if old:
+        note += "\n\n" + t("Removed when these images were made by an older version: {tags}. Rebuild the character "
+                            "to get every tag back in the captions.", tags=ltr(", ".join(old)))
+    box_choices = [(f"{tag} · {len(where)}", tag) for tag, where in box.items()]
+    return choices, [r["tag"] for r in rows if r["suggested"]], legend, box_choices, note
+
+
+def goal_view(pname, char, goal):
+    choices, suggested, legend, box_choices, note = _goal_state(pname, char, goal)
+    return gr.update(choices=choices, value=suggested), legend, gr.update(choices=box_choices, value=[]), note
+
+
+def tag_views(pname, char, query, goal):
+    return (*tag_view(pname, char, query), *goal_view(pname, char, goal))
+
+
 @guarded
-def _tag_edit(pname, char, query, **kw):
+def _tag_edit(pname, char, query, goal, **kw):
     from .outfits import edit_captions
     if not char:
         raise gr.Error(t("Pick the character"))
     n = edit_captions(Project(safe_name(pname)), char, **kw)
     gr.Info(t("Changed {n} captions", n=n))
-    return tag_view(pname, char, query)
+    return tag_views(pname, char, query, goal)
 
 
-def tag_remove(pname, char, selected, query):
+def tag_remove(pname, char, selected, query, goal="character"):
     if not selected:
         raise gr.Error(t("Pick one or more tags in the table"))
-    return _tag_edit(pname, char, query, remove=selected)
+    return _tag_edit(pname, char, query, goal, remove=selected)
 
 
-def tag_replace(pname, char, selected, new_text, query):
+def tag_replace(pname, char, selected, new_text, query, goal="character"):
     if not selected:
         raise gr.Error(t("Pick one or more tags in the table"))
-    return _tag_edit(pname, char, query, replace={tag: new_text or "" for tag in selected})
+    return _tag_edit(pname, char, query, goal, replace={tag: new_text or "" for tag in selected})
 
 
-def tag_add(pname, char, add_text, query):
+def tag_add(pname, char, add_text, query, goal="character"):
     from .tags import split_tags
     if not split_tags(add_text or ""):
         raise gr.Error(t("Type the tag to add"))
-    return _tag_edit(pname, char, query, add=split_tags(add_text))
+    return _tag_edit(pname, char, query, goal, add=split_tags(add_text))
 
 
 @guarded
-def tag_undo(pname, char, query):
+def tag_absorb(pname, char, picked, query, goal="character"):
+    from .outfits import absorb_captions, protected
+    if not char:
+        raise gr.Error(t("Pick the character"))
+    if not picked:
+        raise gr.Error(t("Check one or more tags first"))
+    p = Project(safe_name(pname))
+    fixed = protected(p, char)
+    moving = [tag for tag in picked if not fixed(tag)]
+    if not moving:
+        raise gr.Error(t("The trigger word, the series and the outfit tags stay in the captions"))
+    n = absorb_captions(p, char, moving)
+    gr.Info(t("Moved into the trigger word: {tags}. Changed {n} captions.", tags=", ".join(moving), n=n))
+    return tag_views(pname, char, query, goal)
+
+
+@guarded
+def tag_restore(pname, char, picked, query, goal="character"):
+    from .outfits import restore_captions
+    if not char:
+        raise gr.Error(t("Pick the character"))
+    if not picked:
+        raise gr.Error(t("Check one or more tags first"))
+    n = restore_captions(Project(safe_name(pname)), char, picked)
+    gr.Info(t("Put back in the captions: {tags}. Changed {n} captions.", tags=", ".join(picked), n=n))
+    return tag_views(pname, char, query, goal)
+
+
+@guarded
+def tag_undo(pname, char, query, goal="character"):
     from .tags import undo_last
     if not char:
         raise gr.Error(t("Pick the character"))
@@ -1082,17 +1157,17 @@ def tag_undo(pname, char, query):
         raise gr.Error(t("No change to undo"))
     resync_after_undo(Project(safe_name(pname)), char)
     gr.Info(t("Restored {n} captions", n=n))
-    return tag_view(pname, char, query)
+    return tag_views(pname, char, query, goal)
 
 
 @guarded
-def rerun_outfits(pname, char, query):
+def rerun_outfits(pname, char, query, goal="character"):
     from .outfits import run_outfits
     p = need_project(pname)
     if not char:
         raise gr.Error(t("Pick the character"))
     log = captured(run_outfits, p, char)
-    return (*tag_view(pname, char, query), log)
+    return (*tag_views(pname, char, query, goal), log)
 
 
 def save_target(char, parent):
@@ -1463,21 +1538,36 @@ def build_page(demo, gpu):
             files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
 
         with gr.Tab(t("4. Tags"), id="tags"):
-            gr.Markdown(t("All tags in the character's captions and how often they appear. Click a tag in the table "
-                          "to select it, then remove or replace it in **all** captions at once. Every change can be "
-                          "undone."))
+            gr.Markdown(t("Every tag the tagger found is in the captions. Pick what the LoRA is for to see the tags "
+                          "that matter for it, then move the ones the trigger word should learn into the trigger word. "
+                          "Below are all the tags and how often they appear: remove, replace or add tags in **all** "
+                          "captions at once. Every change can be undone."))
+            with gr.Row():
+                t_char = gr.Dropdown(label=t("Character"), choices=[], scale=1)
+                t_goal = gr.Radio(goal_choices(), value="character", label=t("What is the LoRA for?"), scale=2)
             with gr.Row():
                 with gr.Column(scale=3):
-                    with gr.Row():
-                        t_char = gr.Dropdown(label=t("Character"), choices=[], scale=2)
-                        t_search = gr.Textbox(label=t("Search"), elem_classes="ltr", scale=2)
+                    t_goal_tags = gr.CheckboxGroup(label=t("Tags for this goal (checked = in at least 20% of the "
+                                                           "images)"), choices=[], elem_classes="tag-choices")
+                    t_goal_legend = gr.Markdown()
+                    t_absorb_btn = gr.Button(t("🔒 Move the checked into the trigger word"), variant="primary")
+                with gr.Column(scale=2):
+                    t_box = gr.CheckboxGroup(label=t("🔒 Learned by the trigger word (not in the captions)"),
+                                             choices=[], elem_classes="tag-choices")
+                    t_box_note = gr.Markdown()
+                    t_restore_btn = gr.Button(t("↩ Put the checked back in the captions"))
+            with gr.Row():
+                with gr.Column(scale=3):
+                    t_search = gr.Textbox(label=t("Search"), elem_classes="ltr")
                     t_table = gr.Dataframe(headers=TAG_COLUMNS, interactive=False, max_height=620,
                                            column_widths=["70%", "15%", "15%"])
                 with gr.Column(scale=2):
                     t_status = gr.Markdown()
                     t_selected = gr.Dropdown(label=t("Selected tags"), choices=[], multiselect=True,
                                              allow_custom_value=True, elem_classes="ltr")
-                    t_remove_btn = gr.Button(t("🗑 Remove the selected from all captions"), variant="stop")
+                    with gr.Row():
+                        t_remove_btn = gr.Button(t("🗑 Remove the selected from all captions"), variant="stop")
+                        t_absorb_sel_btn = gr.Button(t("🔒 Move the selected into the trigger word"))
                     with gr.Row():
                         t_new = gr.Textbox(label=t("Replace the selected with (empty = remove)"), elem_classes="ltr",
                                            scale=3, placeholder="brown eyes")
@@ -1605,14 +1695,26 @@ def build_page(demo, gpu):
     save_btn.click(L(save_caption), [project, r_char, files_st, idx_st, r_caption], None, concurrency_id="review")
 
     t_out = [t_table, t_status, t_selected]
-    t_char.change(L(tag_view), [project, t_char, t_search], t_out)
+    g_out = [t_goal_tags, t_goal_legend, t_box, t_box_note]
+    t_char.change(L(tag_views), [project, t_char, t_search, t_goal], [*t_out, *g_out])
+    t_goal.change(L(goal_view), [project, t_char, t_goal], g_out)
     t_search.change(L(tag_search), [project, t_char, t_search, t_selected], t_out)
     t_table.select(pick_tag, t_selected, t_selected)
-    t_remove_btn.click(L(tag_remove), [project, t_char, t_selected, t_search], t_out, concurrency_id="review")
-    t_replace_btn.click(L(tag_replace), [project, t_char, t_selected, t_new, t_search], t_out, concurrency_id="review")
-    t_add_btn.click(L(tag_add), [project, t_char, t_add_text, t_search], t_out, concurrency_id="review")
-    t_undo_btn.click(L(tag_undo), [project, t_char, t_search], t_out, concurrency_id="review")
-    t_outfits_btn.click(L(rerun_outfits), [project, t_char, t_search], [*t_out, t_log], concurrency_id="review")
+    t_remove_btn.click(L(tag_remove), [project, t_char, t_selected, t_search, t_goal], [*t_out, *g_out],
+                       concurrency_id="review")
+    t_replace_btn.click(L(tag_replace), [project, t_char, t_selected, t_new, t_search, t_goal], [*t_out, *g_out],
+                        concurrency_id="review")
+    t_add_btn.click(L(tag_add), [project, t_char, t_add_text, t_search, t_goal], [*t_out, *g_out],
+                    concurrency_id="review")
+    t_absorb_btn.click(L(tag_absorb), [project, t_char, t_goal_tags, t_search, t_goal], [*t_out, *g_out],
+                       concurrency_id="review")
+    t_absorb_sel_btn.click(L(tag_absorb), [project, t_char, t_selected, t_search, t_goal], [*t_out, *g_out],
+                           concurrency_id="review")
+    t_restore_btn.click(L(tag_restore), [project, t_char, t_box, t_search, t_goal], [*t_out, *g_out],
+                        concurrency_id="review")
+    t_undo_btn.click(L(tag_undo), [project, t_char, t_search, t_goal], [*t_out, *g_out], concurrency_id="review")
+    t_outfits_btn.click(L(rerun_outfits), [project, t_char, t_search, t_goal], [*t_out, *g_out, t_log],
+                        concurrency_id="review")
 
     sum_in, sum_out = [project, e_char, e_out], [e_summary, groups_df]
     e_char.change(L(save_summary), sum_in, sum_out)
@@ -1620,11 +1722,11 @@ def build_page(demo, gpu):
     tabs.select(L(save_summary), sum_in, sum_out)
     tabs.select(L(delete_hint), project, del_hint)
     project.change(L(delete_hint), project, del_hint)
-    tabs.select(L(tag_view), [project, t_char, t_search], t_out)
+    tabs.select(L(tag_views), [project, t_char, t_search, t_goal], [*t_out, *g_out])
     for event in (project_loaded, list_refreshed):
         event.then(L(change_char), [project, r_char], [r_filter, move_to, *rv_out]) \
             .then(L(version_choices), [project, r_char], version_pick) \
-            .then(L(tag_view), [project, t_char, t_search], t_out) \
+            .then(L(tag_views), [project, t_char, t_search, t_goal], [*t_out, *g_out]) \
             .then(L(save_summary), sum_in, sum_out)
     long_action(export_btn, stop_export, do_save, [project, e_char, e_out], [export_log]) \
         .success(L(delete_hint), project, del_hint)
@@ -1633,9 +1735,11 @@ def build_page(demo, gpu):
     texts = static_texts(demo)
     for block, props in ((title, {"value": lambda: title_md(gpu)}), (lang_btn, {"value": other_language}),
                          (opts, {"choices": build_options}), (upscaler, {"choices": upscaler_choices}),
+                         (t_goal, {"choices": goal_choices}),
                          (upscale_version, {"choices": model_version_choices})):
         texts.setdefault(block._id, (block, {}))[1].update(props)
-    refreshed = [vids_df, clusters_gal, usage, r_filter, move_to, r_info, r_stats, t_table, t_status, e_summary,
+    refreshed = [vids_df, clusters_gal, usage, r_filter, move_to, r_info, r_stats, t_table, t_status, t_goal_legend,
+                 t_box_note, e_summary,
                  groups_df, del_hint, version_pick, version_diff, preview_gal, preview_summary,
                  impact_summary, impact_table, impact_gal, model_info]
     switch_outputs = [block for block, _ in texts.values()] + [b for b in refreshed if b._id not in texts]
@@ -1654,7 +1758,7 @@ def build_page(demo, gpu):
 
     demo.load(L(init_page), project, [lang_box, project, *proj_outputs]).then(None, lang_box, None, js=set_direction)
 
-    def switch_language(pname, char, files, idx, tchar, query, echar, parent, version, preview, impact,
+    def switch_language(pname, char, files, idx, tchar, query, goal, echar, parent, version, preview, impact,
                         upscale_on, model, upscale_version):
         from .aitk import save_settings
         new = "en" if lang() == "ar" else "ar"
@@ -1666,6 +1770,7 @@ def build_page(demo, gpu):
             updates = {block._id: {prop: translated(text) for prop, text in props.items()}
                        for block, props in texts.values()}
             rows, status, _ = _tag_state(pname, tchar, query)
+            _, _, legend, _, box_note = _goal_state(pname, tchar, goal)
             summary, groups = save_summary(pname, echar, parent)
             preview_images, preview_text = preview_view(preview)
             impact_text, impact_rows = impact_view(impact)
@@ -1678,6 +1783,8 @@ def build_page(demo, gpu):
                               (r_stats, {"value": stats_text(pname, char)}),
                               (t_table, {"value": table(rows, TAG_COLUMNS)}),
                               (t_status, {"value": status}),
+                              (t_goal_legend, {"value": legend}),
+                              (t_box_note, {"value": box_note}),
                               (e_summary, {"value": summary}),
                               (groups_df, {"value": groups}),
                               (del_hint, {"value": delete_hint(pname)}),
@@ -1692,8 +1799,8 @@ def build_page(demo, gpu):
                 updates.setdefault(block._id, {}).update(kw)
         return [page_language(new)] + [gr.update(**updates[block._id]) for block in switch_outputs]
 
-    lang_btn.click(L(switch_language), [project, r_char, files_st, idx_st, t_char, t_search, e_char, e_out,
-                                      version_pick, preview_state, impact_state, upscale_on, upscaler,
+    lang_btn.click(L(switch_language), [project, r_char, files_st, idx_st, t_char, t_search, t_goal, e_char,
+                                      e_out, version_pick, preview_state, impact_state, upscale_on, upscaler,
                                       upscale_version],
                    [lang_box, *switch_outputs]).then(None, lang_box, None, js=set_direction)
     return texts
