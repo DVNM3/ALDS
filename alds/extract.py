@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 
 from .cancel import check as check_cancel
+from .i18n import t
 from .repeats import Fingerprinter
 
 
@@ -37,13 +38,13 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
         prev = last_kept = None
         last_kept_t, last_kept_shot = -1e9, -1
         shot, since_cut = 0, 0
-        for n, frame in enumerate(tqdm(container.decode(stream), total=total, unit="f",
-                                       desc="  decode", leave=False)):
+        for n, frame in enumerate(tqdm(container.decode(stream), total=total, unit=t("frames"),
+                                       desc=t("Reading the episode"), leave=False)):
             check_cancel()
-            t = frame_time(frame, n, fps)
+            at = frame_time(frame, n, fps)
             thumb = frame.reformat(width=64, height=36, format="gray").to_ndarray().astype(np.float32)
-            fp.add(t, thumb)
-            if any(a <= t < b for a, b in skip):
+            fp.add(at, thumb)
+            if any(a <= at < b for a, b in skip):
                 prev = None
                 continue
             if prev is None or np.abs(thumb - prev).mean() > cut_diff:
@@ -53,14 +54,14 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
                 since_cut += 1
             prev = thumb
 
-            if thumb.std() < flat_std or since_cut < settle or t - last_kept_t < min_gap:
+            if thumb.std() < flat_std or since_cut < settle or at - last_kept_t < min_gap:
                 continue
             if last_kept_shot == shot and np.abs(thumb - last_kept).mean() < keep_diff:
                 continue
 
             name = f"{n:06d}.jpg"
             keep(frame, out_dir / name)
-            frames.append({"n": n, "t": round(t, 3), "shot": shot, "file": f"{rel_prefix}/{name}"})
-            last_kept, last_kept_t, last_kept_shot = thumb, t, shot
+            frames.append({"n": n, "t": round(at, 3), "shot": shot, "file": f"{rel_prefix}/{name}"})
+            last_kept, last_kept_t, last_kept_shot = thumb, at, shot
     info["shots"] = shot
     return frames, info, fp.result()

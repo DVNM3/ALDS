@@ -140,8 +140,9 @@ class PreviewTests(ProjectTest):
         self.assertIn("blue hair", item["caption"].split(", "))
         self.assertEqual(meta["appearance_tags"], ["blue hair"])
         report = (self.char / "report.txt").read_text(encoding="utf-8")
-        self.assertIn("should learn in the Tags tab): blue hair\n", report)
-        self.assertIn("comparing with the other images: -\n", report)
+        self.assertIn("Step 3 of 4: Saving the images and captions, enlarging the small scenes\n", report)
+        self.assertIn("the ones hero should learn): blue hair\n", report)
+        self.assertNotIn("Small details", report)
         self.assertEqual((item["type"], item["upscaler"]), ("scene", "animesharp"))
         self.assertEqual(calls, [((64, 48), "animesharp", "4")])
         factor = 128 / (64 * 48) ** 0.5

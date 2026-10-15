@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from .cancel import check as check_cancel
 from .common import VIDEO_EXTS, mmss
+from .i18n import t
 
 FP_RATE = 2.0
 FLAT_STD = 4.0
@@ -59,13 +60,14 @@ def _fingerprint(path, skip):
             s.codec_context.skip_frame = skip
         fps = float(s.average_rate or 24)
         duration = c.duration / av.time_base if c.duration else None
-        with tqdm(total=round(duration) if duration else None, unit="s", desc="  fingerprint", leave=False) as bar:
+        with tqdm(total=round(duration) if duration else None, unit=t("seconds"), desc=t("Comparing the episodes"),
+                  leave=False) as bar:
             for n, frame in enumerate(c.decode(s)):
                 check_cancel()
-                t = float(frame.time) if frame.time is not None else n / fps
-                fp.add(t, frame.reformat(width=64, height=36, format="gray").to_ndarray().astype(np.float32))
-                windows.add(int(t * FP_RATE))
-                bar.update(max(0, int(t) - bar.n))
+                at = float(frame.time) if frame.time is not None else n / fps
+                fp.add(at, frame.reformat(width=64, height=36, format="gray").to_ndarray().astype(np.float32))
+                windows.add(int(at * FP_RATE))
+                bar.update(max(0, int(at) - bar.n))
     expected = int(duration * FP_RATE) if duration else len(windows)
     return fp.result(), len(windows) / max(expected, 1)
 
@@ -126,14 +128,17 @@ def detect_repeats(project, min_len=40.0):
     vids = sorted(proj["videos"], key=lambda v: v["id"])
     if not vids:
         return
+    print(t("Finding the opening and ending (OP/ED)"))
     fps = {}
     for v in vids:
         p = project.path(f"scan/fp_v{v['id']:02d}.npy")
         if not p.exists():
             if not Path(v["path"]).exists():
-                print(f"[autoskip] v{v['id']:02d}: video file missing, can't fingerprint it")
+                print("  • " + t("Episode {ep}: the video file is missing, so it can't be compared",
+                                 ep=f"v{v['id']:02d}"))
                 continue
-            print(f"[autoskip] fingerprinting v{v['id']:02d} (one-time) ...")
+            print("  • " + t("Reading episode {ep} for the comparison (only the first time)...",
+                             ep=f"v{v['id']:02d}"))
             np.save(p, fingerprint_video(v["path"]))
         fps[v["id"]] = np.load(p)
 
@@ -141,11 +146,11 @@ def detect_repeats(project, min_len=40.0):
     if len(vids) == 1 and vids[0]["id"] in fps:
         ref = _sibling(Path(vids[0]["path"]))
         if ref is None:
-            print("[autoskip] only one episode and no other episode in its folder - nothing to compare with")
+            print("  • " + t("Only one episode, and no other episode in its folder to compare it with"))
         else:
             p = project.path("scan/fp_ref.npy")
             if proj.get("fp_ref") != str(ref) or not p.exists():
-                print(f"[autoskip] fingerprinting reference episode {ref.name} (not extracted) ...")
+                print("  • " + t("Reading {name} for the comparison (no frames are taken from it)...", name=ref.name))
                 np.save(p, fingerprint_video(ref))
                 proj["fp_ref"] = str(ref)
             fps["ref"] = np.load(p)
@@ -175,9 +180,9 @@ def detect_repeats(project, min_len=40.0):
     n_flag, n_gone = _flag_frames(project, lambda f: any(s <= f["t"] < e for s, e, _ in skip_by_vid.get(f["vid"], [])))
 
     for v in vids:
-        segs = " | ".join(f"{lab} {mmss(s)}-{mmss(e)}" for s, e, lab in v["auto_skip"]) or "none found"
-        print(f"[autoskip] v{v['id']:02d}: {segs}")
-    print(f"[autoskip] {n_flag} extracted frames excluded")
+        segs = " | ".join(f"{lab} {mmss(s)}-{mmss(e)}" for s, e, lab in v["auto_skip"]) or t("nothing found")
+        print("  • " + t("Episode {ep}: {parts}", ep=f"v{v['id']:02d}", parts=segs))
+    print("  • " + t("{n} frames left out", n=n_flag))
     _report_gone(n_gone)
 
 
@@ -187,7 +192,7 @@ def clear_repeats(project):
         v["auto_skip"] = []
     project.save("project.json", proj)
     _, n_gone = _flag_frames(project, lambda f: False)
-    print("[autoskip] cleared - all frames are used again")
+    print(t("OP/ED detection is off: every frame is used again"))
     _report_gone(n_gone)
 
 
@@ -212,5 +217,5 @@ def _flag_frames(project, in_skip):
 
 def _report_gone(n_gone):
     if n_gone:
-        print(f"[autoskip] {n_gone} frames are used again but their files were deleted by `clean` - "
-              "they stay unused until you run restore-frames")
+        print("  • " + t("{n} frames are used again but were deleted to save space; they stay unused until you "
+                         "restore the frames", n=n_gone))

@@ -487,4 +487,105 @@ AR = {
     "Some files couldn't be deleted (open in another program?): {error}":
         "تعذّر حذف بعض الملفات (ربما مفتوحة في برنامج آخر): {error}",
     "Deleted the project {name} and freed {size}.": "حُذف المشروع {name} وتحرّرت {size}.",
+
+    "Step {i} of {n}: {title}": "الخطوة {i} من {n}: {title}",
+    "Finding the character": "البحث عن الشخصية",
+    "{n} reference images": "{n} صورة مرجعية",
+    "{n} images you confirmed help to find the character": "{n} صورة أكّدتها تساعد في إيجاد الشخصية",
+    "{n} frames show the character (match threshold {threshold})": "{n} إطار تظهر فيه الشخصية (حد التطابق {threshold})",
+    ", {n} of them found by following the shot": "، منها {n} بتتبّع الشخصية داخل اللقطة",
+    "{n} other clusters": "{n} مجموعة أخرى",
+    "{n} images rejected in the review": "{n} صورة رفضتها في المراجعة",
+    " and ": " و",
+    "{n} frames left out because the character there looks more like someone else ({sources})":
+        "استُبعد {n} إطار لأن الشخصية فيه تشبه شخصية أخرى أكثر ({sources})",
+    "{n} more frames are just above the match threshold. Raising it to {value} would add them, but other "
+    "characters may slip in.":
+        "{n} إطار آخر فوق حد التطابق بقليل. رفع الحد إلى {value} يضيفها، لكن قد تدخل معها شخصيات أخرى.",
+    "Checking each scene": "تحليل المشاهد",
+    "scenes": "مشهد",
+    "{kept} of {n} scenes kept. Only scenes with the character alone and at least {share} of the frame height are "
+    "used.":
+        "بقي {kept} من {n} مشهد. تُستخدم فقط المشاهد التي تظهر فيها الشخصية وحدها بارتفاع {share} من الإطار على الأقل.",
+    "Left out: {reasons}": "المستبعدة: {reasons}",
+    "{reason}: {n}": "{reason}: {n}",
+    "✅ Preview ready: {accepted} of {frames} sampled frames accepted. Enlarging and outfits are done only in the "
+    "full build.":
+        "✅ المعاينة جاهزة: قُبل {accepted} من {frames} إطار في العينة. التكبير وفصل الأزياء يتمّان في البناء الكامل فقط.",
+    "Saving the images and captions": "حفظ الصور والأوصاف",
+    "Saving the images and captions, enlarging the small scenes": "حفظ الصور والأوصاف وتكبير المشاهد الصغيرة",
+    "Saving the images": "حفظ الصور",
+    "images": "صورة",
+    "Small details were not checked again: {error}": "لم تُراجع التفاصيل الصغيرة مرة أخرى: {error}",
+    "{n} images saved, {r} of them marked ⚠ to check": "حُفظت {n} صورة، منها {r} معلّمة ⚠ للمراجعة",
+    "{n} small scenes enlarged to about {size} px with {model}": "كُبّر {n} مشهد صغير إلى نحو {size} بكسل بموديل {model}",
+    "Small details also found by comparing the images: {tags}": "تفاصيل صغيرة وُجدت أيضًا بمقارنة الصور: {tags}",
+    "Separating the outfits": "فصل الأزياء",
+    "{token}: {n} images ({tags})": "{token}: {n} صورة ({tags})",
+    "told apart by look only": "تُميَّز بالشكل فقط",
+    "{n} images without a clear outfit get no outfit tag": "{n} صورة بلا زي واضح، فلا وسم زي لها",
+    "One outfit only, or too little clothing in view: no outfit tags added":
+        "زي واحد فقط، أو الملابس غير ظاهرة بما يكفي: لم تُضف وسوم أزياء",
+    "✅ Done: {n} images of {name}.": "✅ اكتمل: {n} صورة للشخصية {name}.",
+    "Shots and angles:": "اللقطات والزوايا:",
+    "{shot}: {angles} (total {n})": "{shot}: {angles} (المجموع {n})",
+    "Appearance tags (all stay in the captions; in the Tags tab you pick the ones {name} should learn): {tags}":
+        "وسوم المظهر (كلها تبقى في الأوصاف، ومن تبويب الوسوم تختار ما تتعلمه {name}): {tags}",
+    "Most common tags: {tags}": "الوسوم الأكثر تكرارًا: {tags}",
+    "Your review was carried over: {removed} images removed, {changed} captions edited, {moved} images moved to "
+    "another group":
+        "نُقلت مراجعتك: {removed} صورة محذوفة، و{changed} وصف معدّل، و{moved} صورة منقولة لمجموعة أخرى",
+    "; tag edits applied to {n} new captions": "؛ وطُبّقت تعديلات الوسوم على {n} وصف جديد",
+    "Images now: {n}": "عدد الصور الآن: {n}",
+    "The previous result was saved as version {id}.": "حُفظت النتيجة السابقة كنسخة {id}.",
+    "✅ Restored version {id}. The result before it was saved as version {previous}.":
+        "✅ استُعيدت النسخة {id}، وحُفظت النتيجة التي قبلها كنسخة {previous}.",
+    "✅ Saved as version {id}.": "✅ حُفظت كنسخة {id}.",
+    "↶ Everything this action made was removed; the project is as it was before.":
+        "↶ حُذف كل ما صنعته هذه العملية، وعاد المشروع كما كان.",
+
+    "Episode {i} of {n}: {name}": "الحلقة {i} من {n}: {name}",
+    "Episode {i} of {n}: {name} is already scanned, skipped": "الحلقة {i} من {n}: {name} مفحوصة من قبل، تُخطّيت",
+    "Reading the episode": "قراءة الحلقة",
+    "Finding the characters": "البحث عن الشخصيات",
+    "frames": "إطار",
+    "{n} frames taken from {shots} shots ({minutes} min)": "أُخذ {n} إطار من {shots} لقطة ({minutes} دقيقة)",
+    "{n} character appearances, {k} of them big enough to recognise":
+        "{n} ظهور لشخصيات، منها {k} بحجم يكفي للتعرّف عليها",
+    "{n} frames saved": "حُفظ {n} إطار",
+    "; {n} frames without a character to recognise were not kept": "، ولم يُحفظ {n} إطار بلا شخصية يمكن التعرّف عليها",
+    "Finding the opening and ending (OP/ED)": "البحث عن الشارة (OP/ED)",
+    "Comparing the episodes": "مقارنة الحلقات",
+    "seconds": "ثانية",
+    "Episode {ep}: the video file is missing, so it can't be compared": "الحلقة {ep}: ملف الفيديو غير موجود، فلا يمكن مقارنتها",
+    "Reading episode {ep} for the comparison (only the first time)...": "قراءة الحلقة {ep} للمقارنة (أول مرة فقط)...",
+    "Only one episode, and no other episode in its folder to compare it with":
+        "حلقة واحدة فقط، ولا توجد حلقة أخرى في مجلدها للمقارنة",
+    "Reading {name} for the comparison (no frames are taken from it)...": "قراءة {name} للمقارنة (لا تؤخذ منها إطارات)...",
+    "Episode {ep}: {parts}": "الحلقة {ep}: {parts}",
+    "nothing found": "لم يُعثر على شيء",
+    "{n} frames left out": "استُبعد {n} إطار",
+    "OP/ED detection is off: every frame is used again": "اكتشاف الشارة متوقف: كل الإطارات مستخدمة من جديد",
+    "{n} frames are used again but were deleted to save space; they stay unused until you restore the frames":
+        "{n} إطار عاد للاستخدام لكنه حُذف لتوفير المساحة، ولن يُستخدم حتى تستعيد الإطارات",
+    "Grouping the characters": "تجميع الشخصيات",
+    "{n} clear views of characters": "{n} ظهور واضح للشخصيات",
+    "{n} characters found; {k} views in groups smaller than {size} are hidden":
+        "وُجدت {n} شخصية، وأُخفي {k} ظهور في مجموعات أصغر من {size}",
+    "#{id}: {n} views, episodes {episodes}": "#{id}: {n} ظهور، في الحلقات {episodes}",
+    "Drawing the character cards": "رسم بطاقات الشخصيات",
+    "characters": "شخصية",
+    "Cluster #{id} split into {parts}": "قُسّمت المجموعة #{id} إلى {parts}",
+    "#{id} ({n} views)": "#{id} ({n} ظهور)",
+    "; {n} views that fit nowhere were left out": "؛ واستُبعد {n} ظهور لم يناسب أي جزء",
+    "Restoring the frames": "استعادة الإطارات",
+    "✅ Restored {n} missing frames. Building and grouping work again.":
+        "✅ استُعيد {n} إطار مفقود. البناء والتجميع يعملان من جديد.",
+    "✅ Deleted {n} frames and freed {size}.": "✅ حُذف {n} إطار وتحرّرت {size}.",
+    "✅ Saved {n} of {total} images in {folder}": "✅ حُفظت {n} من {total} صورة في {folder}",
+    "⚠ {n} images have no caption file": "⚠ {n} صورة بلا ملف وصف",
+    "In AI Toolkit, set the dataset folder to {folder} and the caption extension to txt. The captions already "
+    "contain the trigger word {name}.":
+        "في AI Toolkit اجعل مجلد البيانات (dataset) هو {folder} وامتداد ملفات الوصف txt. "
+        "الأوصاف تحتوي كلمة التفعيل {name} مسبقًا.",
 }

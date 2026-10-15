@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from .common import Project
+from .i18n import t
 
 
 def _remove(p: Path):
@@ -72,7 +73,7 @@ class Transaction:
                     _remove(p)
         _remove(self.backup)
         self.rolled_back = True
-        print("[undo] stopped - everything this command generated was removed")
+        print(t("↶ Everything this action made was removed; the project is as it was before."))
 
 
 def scan_txn(project: Project):

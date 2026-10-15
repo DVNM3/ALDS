@@ -14,7 +14,8 @@ from .cache import CropCache, digest, link_or_copy
 from .cancel import Cancelled, check as check_cancel
 from .captions import (FRAMING_TAGS, appearance_tags, classify, low_scores, make_caption, people_count,
                        recover_details)
-from .common import box_area, box_iou, frame_in_use, save_json
+from .common import FRAMING, VIEW, box_area, box_iou, frame_in_use, save_json
+from .i18n import t
 from .identity import ccip_cross, ccip_features
 from . import negatives, positives
 from .scan import load_state
@@ -27,9 +28,7 @@ OFFMODEL_TAGS = ("chibi", "super deformed", "blurry")
 MONOCHROME_TAGS = ("monochrome", "greyscale", "sepia")
 OTHER_PER_CLUSTER = 16
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
-FRAMINGS = ("close_up", "upper_body", "cowboy_shot", "full_body")
-VIEWS = ("front", "three_quarter", "side", "back", "above", "below")
-SCORE_BINS = (0.05, 0.10, 0.13, 0.15, 0.178, 0.20, 0.25)
+NEAR_MISS = 0.02
 
 
 def reference_features(project, cluster_ids, ref_dir, dets, F, cache):
@@ -57,7 +56,7 @@ def reference_features(project, cluster_ids, ref_dir, dets, F, cache):
         if not imgs:
             raise SystemExit(f"no images in {ref_dir}")
         refs.append(ccip_features(imgs))
-        print(f"[build] {len(imgs)} reference images")
+        print("  • " + t("{n} reference images", n=len(imgs)))
     if not refs:
         raise SystemExit("give --cluster and/or --ref")
     return np.concatenate(refs)
@@ -203,7 +202,15 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
         shutil.rmtree(out_dir / "_deleted", ignore_errors=True)
 
     cache = CropCache(project, fresh and not preview_limit)
-    preview_rows = []
+    preview_rows, lines = [], []
+    n_steps = 2 if preview_limit else 3 + bool(outfits)
+
+    def say(text):
+        print(text)
+        lines.append(text)
+
+    def step(i, title):
+        say(t("Step {i} of {n}: {title}", i=i, n=n_steps, title=title))
 
     def preview_image(img, fr, reason, score=None):
         img = img.copy()
@@ -215,6 +222,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
 
     try:
         threshold = threshold or DEFAULT_THRESHOLD
+        step(1, t("Finding the character"))
         refs = reference_features(project, cluster_ids, ref_dir, dets, F, cache)
         confirmed_names, confirmed = positives.load(project.char_dir(name))
         neg_names, negs = negatives.load(project.char_dir(name))
@@ -223,16 +231,20 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
         negs = negatives.combine(negs, others)
         chosen, best_scores, n_rejected = select(frames, dets, F, refs, threshold, relax, cache, negs, confirmed)
         if confirmed_names:
-            print(f"[build] {len(confirmed_names)} confirmed identity references")
+            say("  • " + t("{n} images you confirmed help to find the character", n=len(confirmed_names)))
         n_track = sum(1 for v in chosen.values() if v[2] == "track")
-        print(f"[build] matched {len(chosen)} frames ({n_track} via shot tracking), threshold {threshold}")
-        sources = ([f"{len(other_ids)} other clusters"] if other_ids else []) + (
-            [f"{len(neg_names)} images rejected in review"] if neg_names else [])
-        others_line = (f"{n_rejected} frames left out as other characters (from {' and '.join(sources)})"
-                       if sources else "")
-        if others_line:
-            print("        " + others_line)
-        print("        best score per frame: " + score_histogram(best_scores))
+        say("  • " + t("{n} frames show the character (match threshold {threshold})", n=len(chosen),
+                       threshold=threshold)
+            + (t(", {n} of them found by following the shot", n=n_track) if n_track else ""))
+        sources = ([t("{n} other clusters", n=len(other_ids))] if other_ids else []) + (
+            [t("{n} images rejected in the review", n=len(neg_names))] if neg_names else [])
+        if sources:
+            say("  • " + t("{n} frames left out because the character there looks more like someone else ({sources})",
+                           n=n_rejected, sources=t(" and ").join(sources)))
+        near = sum(threshold < score <= threshold + NEAR_MISS for score in best_scores)
+        if near:
+            say("  • " + t("{n} more frames are just above the match threshold. Raising it to {value} would add "
+                           "them, but other characters may slip in.", n=near, value=round(threshold + NEAR_MISS, 3)))
         if not chosen and not preview_limit:
             raise SystemExit("no matches - try a higher --threshold or other clusters/refs")
 
@@ -276,13 +288,12 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                 fmt=("rating", "general", "character", "embedding"))
             return rating, general, emb
 
-        n_new = 0
-        for fi in tqdm(sorted(chosen), desc="  analyse", unit="f"):
+        step(2, t("Checking each scene"))
+        for fi in tqdm(sorted(chosen), desc=t("Checking each scene"), unit=t("scenes")):
             check_cancel()
             det, score, how = chosen[fi]
             fr = frames[fi]
-            entry, computed = cache.entry(det, fr), cache.computed
-            rec = entry["crops"].setdefault("scene", {})
+            rec = cache.entry(det, fr)["crops"].setdefault("scene", {})
             frame = functools.cache(lambda: Image.open(project.path(fr["file"])).convert("RGB"))
             if not alone(det, dets_by_frame[fi]):
                 drop("another character in the scene", frame, fr)
@@ -313,13 +324,14 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
             items.append({"frame": fi, "det": det["id"], "type": "scene", "box": det["box"], "score": round(score, 4),
                           "how": how, "sharp": sharp, "rating": rating, "general": general, "emb": emb,
                           "portrait": portrait, "head": det["head"]})
-            n_new += cache.computed > computed
-        print(f"[build] {len(chosen) - n_new} frames reused from the saved analysis, {n_new} analysed now")
         n_scenes = len(items) + sum(dropped.values())
         keep = dedup(items, sim)
         dropped["near-duplicate"] = len(items) - len(keep)
-        print(f"[build] {n_scenes} scenes -> {len(keep)} kept "
-              f"(dropped: {', '.join(f'{v} {k}' for k, v in dropped.items() if v)})")
+        say("  • " + t("{kept} of {n} scenes kept. Only scenes with the character alone and at least {share} of the "
+                       "frame height are used.", kept=len(keep), n=n_scenes, share=f"{min_height:.0%}"))
+        if any(dropped.values()):
+            say("  • " + t("Left out: {reasons}", reasons=t(", ").join(
+                t("{reason}: {n}", reason=t(k), n=v) for k, v in dropped.items() if v)))
 
         if preview_limit:
             accepted = {it["frame"] for it in keep}
@@ -331,13 +343,16 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                                   "accepted" if it["frame"] in accepted else "near-duplicate", it["score"])
             result = {"frames": len(sampled), "accepted": len(keep), "items": preview_rows}
             save_json(out_dir / "preview.json", result)
-            print(f"[preview] {len(sampled)} sampled frames; {len(keep)} accepted scenes. "
-                  "Duplicates are checked within the sample; upscaling and outfits run on a full build.")
+            say("")
+            say(t("✅ Preview ready: {accepted} of {frames} sampled frames accepted. Enlarging and outfits are done "
+                  "only in the full build.", accepted=len(keep), frames=len(sampled)))
             return result
 
         if not keep:
             raise SystemExit("no usable scenes after filtering - preview the settings before rebuilding")
 
+        step(3, t("Saving the images and captions, enlarging the small scenes") if upscale_to
+             else t("Saving the images and captions"))
         from imgutils.detect import detect_eyes, detect_faces
         recovered = Counter()
         try:
@@ -345,7 +360,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                                                low_scores([it["emb"] for it in keep], tagger))
         except Exception as e:
             found = [it["general"] for it in keep]
-            print(f"[build] small details were not checked again: {e}")
+            say("  • " + t("Small details were not checked again: {error}", error=e))
         for it, general in zip(keep, found):
             it["caption_tags"] = general
         appearance = appearance_tags(found)
@@ -360,7 +375,7 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                 open_key, open_img = fr["file"], Image.open(project.path(fr["file"])).convert("RGB")
             return open_img
 
-        for it in tqdm(sorted(keep, key=lambda x: x["frame"]), desc="  write" + (" + upscale" if upscale_to else "")):
+        for it in tqdm(sorted(keep, key=lambda x: x["frame"]), desc=t("Saving the images"), unit=t("images")):
             check_cancel()
             fr = frames[it["frame"]]
             pose = None
@@ -409,50 +424,28 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                                "outfits": outfits, "auto_reject": auto_reject, "keep_mono": keep_mono,
                                "keep_text": keep_text, "keep_offmodel": keep_offmodel,
                                "screencap": screencap}})
-    outfit_lines = []
+    say("  • " + t("{n} images saved, {r} of them marked ⚠ to check", n=len(keep), r=n_review))
+    if upscale_to:
+        model = t(UPSCALER_LABELS[upscaler]) + ("" if upscale_version == "auto" else f" · {upscale_version}x")
+        say("  • " + t("{n} small scenes enlarged to about {size} px with {model}", n=n_up, size=upscale_to,
+                       model=model))
+    if recovered:
+        say("  • " + t("Small details also found by comparing the images: {tags}",
+                       tags=", ".join(f"{tag} +{c}" for tag, c in recovered.most_common())))
     if outfits:
         from .outfits import run_outfits
-        found = run_outfits(project, name)
-        outfit_lines = [f"Outfit {o['token']}: {o['count']} images - {', '.join(o['tags'])}" for o in found]
-    report = make_report(name, keep, appearance, recovered, dist, n_review, len(chosen), n_track, dropped, best_scores,
-                         threshold, n_up, upscale_to, min_height, outfit_lines, others_line, upscaler, upscale_version)
-    (out_dir / "report.txt").write_text(report, encoding="utf-8")
-    print(report)
-    print(f"Review:  {sorted_dir}\n  - check the _review folder first, delete anything that is not {name}\n"
-          f"  - then run:  alds.bat export -p {project.name} -n {name}")
-
-
-def score_histogram(scores):
-    edges = (0,) + SCORE_BINS + (9,)
-    counts = np.histogram(scores, bins=edges)[0]
-    labels = [f"<{SCORE_BINS[0]}"] + [f"{a}-{b}" for a, b in zip(SCORE_BINS, SCORE_BINS[1:])] + [f">{SCORE_BINS[-1]}"]
-    return "  ".join(f"{l}:{c}" for l, c in zip(labels, counts))
-
-
-def make_report(name, keep, appearance, recovered, dist, n_review, n_frames, n_track, dropped, best_scores, threshold,
-                n_up, upscale_to, min_height, outfit_lines=(), others_line="", upscaler=DEFAULT_UPSCALER,
-                upscale_version="auto"):
-    lines = [f"Character: {name}",
-             f"Frames matched: {n_frames} ({n_track} via shot tracking) at threshold {threshold}",
-             *([others_line] if others_line else []),
-             f"Best CCIP score per frame (lower = more alike): {score_histogram(best_scores)}",
-             f"Scenes with the character alone, at least {min_height:.0%} of the frame height",
-             "Scenes left out: " + (", ".join(f"{v} {k}" for k, v in dropped.items() if v) or "-"),
-             f"Images written: {len(keep)}  ({n_review} placed in _review for a manual check)",
-             f"Upscaled with {UPSCALER_LABELS[upscaler]}"
-             + ("" if upscale_version == "auto" else f", {upscale_version}x version")
-             + f", to ~{upscale_to}px: {n_up}"
-             if upscale_to else "Upscaling: off",
-             f"Appearance tags (all kept; move the ones '{name}' should learn in the Tags tab): "
-             f"{', '.join(appearance) or '-'}",
-             "Small details also found by comparing with the other images: "
-             + (", ".join(f"{t} +{c}" for t, c in recovered.most_common()) or "-"),
-             *(outfit_lines or ["Outfits: one outfit (no outfit tokens)"]), "",
-             "framing \\ view   " + "".join(f"{'3/4' if v == 'three_quarter' else v:>8}" for v in VIEWS) + "   total"]
-    for f in FRAMINGS:
-        row = [dist[(f, v)] for v in VIEWS]
-        if sum(row):
-            lines.append(f"{f:<16} " + "".join(f"{x:>8}" for x in row) + f"{sum(row):>8}")
-    tag_cnt = Counter(t for it in keep for t in it["caption_tags"])
-    lines += ["", "Most common tags: " + ", ".join(f"{t} ({c})" for t, c in tag_cnt.most_common(30)), ""]
-    return "\n".join(lines)
+        step(4, t("Separating the outfits"))
+        run_outfits(project, name, say)
+    say("")
+    say(t("✅ Done: {n} images of {name}.", n=len(keep), name=name))
+    say(t("Shots and angles:"))
+    for framing in FRAMING:
+        row = [(view, dist[(framing, view)]) for view in VIEW if dist[(framing, view)]]
+        if row:
+            say("  • " + t("{shot}: {angles} (total {n})", shot=t(FRAMING[framing]), n=sum(c for _, c in row),
+                           angles=t(", ").join(f"{t(VIEW[view]).lower()} {c}" for view, c in row)))
+    say(t("Appearance tags (all stay in the captions; in the Tags tab you pick the ones {name} should learn): "
+          "{tags}", name=name, tags=", ".join(appearance) or "-"))
+    tag_cnt = Counter(tag for it in keep for tag in it["caption_tags"])
+    say(t("Most common tags: {tags}", tags=", ".join(f"{tag} ({c})" for tag, c in tag_cnt.most_common(30))))
+    (out_dir / "report.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

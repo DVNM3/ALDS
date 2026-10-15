@@ -8,6 +8,7 @@ from .cache import file_hash
 from .cancel import check as check_cancel
 from .common import inside
 from .extract import frame_time, save_frame, stream_info
+from .i18n import t
 from .txn import Transaction
 
 
@@ -61,7 +62,8 @@ def restore_frames(project, videos_dir=None):
                     stream = container.streams.video[0]
                     stream.thread_type = "AUTO"
                     fps = stream_info(container, stream)[0]
-                    for n, frame in enumerate(tqdm(container.decode(stream), desc="  restore", unit="f")):
+                    for n, frame in enumerate(tqdm(container.decode(stream), desc=t("Restoring the frames"),
+                                                   unit=t("frames"))):
                         check_cancel()
                         if n not in by_number:
                             continue
@@ -106,5 +108,5 @@ def restore_frames(project, videos_dir=None):
             if path.exists():
                 path.rmdir()
         raise
-    print(f"[restore] restored {len(installed)} missing frames; builds and clustering are available again")
+    print(t("✅ Restored {n} missing frames. Building and grouping work again.", n=len(installed)))
     return len(installed)
