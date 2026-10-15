@@ -25,7 +25,8 @@
 Making a character LoRA from an anime usually means hours of taking screenshots, sorting them and writing captions. ALDS does it from the episode files: it finds every character in the episodes, lets you pick yours, and builds a sorted, captioned set of the scenes where your character is alone, which you review in a few minutes and train on.
 
 ## Features
-- **Finds your character.** Every character in the episodes is detected and grouped by identity, so you pick yours with one click. A few reference images work too, which helps with side characters.
+- **Finds your character.** Every character in the episodes is detected and grouped by identity, so you pick yours with one click.
+- **Your own images too.** Add images of the character you already have: they're tagged and enlarged like the scenes, kept with the character for later builds, and help find it in the episodes (useful for side characters). With no episodes at all, the program tags and enlarges your images alone.
 - **Skips the opening and ending.** The OP/ED and long recaps are found by comparing the episodes with each other, and left out.
 - **Whole scenes, character alone.** Only the frames where your character is the only one on screen are used, uncut. Another detected person, or a tagger count such as `1girl` and `1boy`, leaves the scene out, and so does a character smaller than half the frame height (adjustable).
 - **Leaves out other characters.** The clusters you didn't pick show what the other characters look like, so images that resemble one of them more than yours are left out before you review.
@@ -91,17 +92,19 @@ Pictures taken from the episodes are blurred here; in the program they show as t
 ## Using the interface
 Double-click **`alds-gui.bat`**. The interface opens in your browser at `http://127.0.0.1:7860` and only runs on your computer. To stop it, close the black command window.
 
+At the top you pick the **project** (or type a new name) and the **character**. Tabs 3, 4 and 5 work on that character, and tab 2 fills in its trigger word, clusters, your images and its last build settings, ready to build again.
+
 The **العربية / English** button at the top switches the language in place, without losing anything you did on the page. The language you used last opens on the next start.
 
 The tabs follow the work from left to right:
 
 | Tab | What you do there |
 |---|---|
-| **1. Scan episodes** | Paste episode paths, or the path of a whole folder, and press “Start scanning”. The OP/ED is found automatically and its times show in the episodes table. “💾 Disk space” shows the project's size and cleans it up. |
-| **2. Pick the character** | Click your character's card (you can pick more than one) or upload reference images, type the trigger word and press “Build the image set”. If two characters got mixed in one card, select it and press “✂ Split”. |
+| **1. Scan episodes** | Drop the episode files on the box, or press “📂 Choose episodes” or “📁 Choose a folder of episodes”, then “Start scanning”. The OP/ED is found automatically and its times show in the episodes table. When the scan ends, tab 2 opens. |
+| **2. Pick the character** | Click your character's card (you can pick more than one), type the trigger word, add your own images if you have some, and press “Build the image set”. A character that's already built is built again: the current result is saved as a version first and your review carries over. If two characters got mixed in one card, select it and press “✂ Split”. |
 | **3. Review** | Opens by itself after a build, with the images marked ⚠ first. Remove what isn't right, fix a caption, move an image to another group, or show one outfit only. |
 | **4. Tags** | Pick what the LoRA is for: character, style or outfit. The tags that matter for it are listed by kind (hair colour, haircut, hair ties, tattoos and marks, earrings, clothes...), and the ones in at least 20% of the images are checked. Moved tags leave every caption and sit in the trigger word box; put one back and it returns to the images it was in. Below, every tag and how often it appears: remove, replace or add a tag in all captions at once, with undo. |
-| **5. Save the result** | Choose a place; a folder named after the character is made there with the images and their caption files. That folder is your dataset. Afterwards you can delete the project to free space. |
+| **5. Save the result** | Choose a place; a folder named after the character is made there with the images and their caption files. That folder is your dataset. “🧰 Project upkeep” shows the project's size, cleans it up, restores frames and deletes the project. |
 
 Review keys:
 
@@ -117,7 +120,9 @@ Review keys:
 - Removed images aren't deleted for good: they move to a `_deleted` folder inside the character folder.
 - **🕘 Saved build versions** (Review tab): save, compare, restore or delete a version. Images that didn't change are stored only once.
 - **Preview these settings** (Pick the character): runs the filters on 12 frames spread over the episodes. Upscaling and outfit tags only run in the full build.
-- **Restore missing frames** (Disk space): leave the folder empty to use the episodes where they were, or give their new folder. Use the original files, not re-encoded copies.
+- **Choosing episodes:** the buttons open the Windows file window and use the files where they are. A dropped file goes through the browser, so the program looks for the same file on the disk (same name and size, in the folders you used before, Downloads, Videos, Desktop and Documents) and uses it there; if it isn't found, a copy is kept inside the project, marked 📥. You can also paste a path into the episode list and press Enter.
+- **Your own images** (Pick the character): drop them on the box or click it. They skip the scene filters, so every image you add is kept, and they're saved with the character: the list shows them again next time, and × removes one. Untick “Add them to the image set” to use them only to find the character, or “Use them to find the character in the episodes” to only add them.
+- **Restore missing frames** (Project upkeep): leave the folder empty to use the episodes where they were, or choose their new folder. Use the original files, not re-encoded copies.
 - **Upscaling model** (Pick the character): choosing a model downloads it, once, into the shared model folder `%USERPROFILE%\.cache\huggingface`, not into the program folder. **🗑 Delete this model to free space** removes it; press **!** next to a model to read what it does, where it comes from and its licence. waifu2x, AnimeSharp and APISR have a 2x and a 4x version: **Automatic** uses 2x for enlargements up to double and 4x above, and choosing one version downloads only that one.
 
 ## Where your files go
@@ -131,9 +136,11 @@ projects\<project>\
   characters\<name>\
     sorted\close_up\front\ ...   a PNG image + a .txt caption, sorted by shot and angle
     sorted\_review\ ...          doubtful images to check first
+    own\                         your own images of the character, as you added them
     report.txt                   the build steps, statistics and the angle distribution
     versions\<version>\          earlier results: images, captions and review
   previews\<name>\               last settings preview (separate from the finished images)
+  episodes\                     copies of dropped episodes that weren't found on the disk
 ```
 
 “Save the result” (or `export` on the command line) copies the reviewed images and captions into one flat folder: the dataset you point AI Toolkit at, with caption extension `txt`.
@@ -193,6 +200,7 @@ alds.bat build -p fairytail -n natsu_ft --cluster 2 --series "fairy tail"
 ```
 - `-n` is the trigger word, also the name of the character folder.
 - `--cluster 2 5` when the character is split over more than one cluster; `--ref folder` for 3 to 10 reference images instead of, or as well as, cluster numbers.
+- `--images folder` adds your own images of the character: tagged and enlarged like the scenes, kept with the character for later builds, and also used to find it (`--no-images-find` turns that off).
 - Building again with other settings only analyses what's new; `--fresh` redoes everything.
 - `--preview` tries the settings on 12 frames and leaves the built images alone; `--preview 24` for more (up to 60). The scenes and the reason for each are written to `projects\<p>\previews\<name>\`.
 
@@ -204,7 +212,7 @@ alds.bat versions -p fairytail -n natsu_ft --compare VERSION_ID
 alds.bat versions -p fairytail -n natsu_ft --restore VERSION_ID
 alds.bat versions -p fairytail -n natsu_ft --delete VERSION_ID
 ```
-Take the ID from the list. Every rebuild saves the current result first, and so does restoring, so you can always go back. A version holds the images, captions, confirmations, rejections and reference images.
+Take the ID from the list. Every rebuild saves the current result first, and so does restoring, so you can always go back. A version holds the images, captions, confirmations, rejections, your own images and reference images.
 
 When you rebuild, your review carries over to the images from the same episode and time: edited captions, group moves and removed images. Bulk tag edits are applied to the new images too, tags in the trigger word box stay out of the captions, and outfit tags follow the new outfit split. If the rebuild fails or is stopped, the previous result comes back.
 
