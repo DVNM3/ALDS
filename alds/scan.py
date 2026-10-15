@@ -11,6 +11,7 @@ from .cache import file_hash
 from .cancel import check as check_cancel
 from .common import VIDEO_EXTS, box_area, frame_in_use, inside_ratio
 from .extract import extract_frames, save_frame
+from .i18n import t
 from .identity import ccip_features, ccip_matrix
 from .repeats import detect_repeats
 
@@ -130,7 +131,8 @@ class FrameDetector:
 
     def finish(self):
         self.pending.put(None)
-        with tqdm(total=self.n_added, initial=self.n_done, desc="  detect", unit="f", leave=False) as bar:
+        with tqdm(total=self.n_added, initial=self.n_done, desc=t("Finding the characters"), unit=t("frames"),
+                  leave=False) as bar:
             while self.collector.is_alive():
                 check_cancel()
                 self.collector.join(0.2)
@@ -162,18 +164,20 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
     proj = project.load("project.json", {"videos": []})
     frames, dets, F = load_state(project)
 
-    for vp in expand_video_args(videos):
+    videos = expand_video_args(videos)
+    for i, vp in enumerate(videos, 1):
         if any(v["path"] == str(vp) for v in proj["videos"]):
-            print(f"[scan] already scanned, skipping: {vp.name}")
+            print(t("Episode {i} of {n}: {name} is already scanned, skipped", i=i, n=len(videos), name=vp.name))
             continue
         vid = len(proj["videos"]) + 1
-        print(f"[scan] v{vid:02d}  {vp.name}")
+        print(t("Episode {i} of {n}: {name}", i=i, n=len(videos), name=vp.name))
         detector = FrameDetector(len(frames), len(dets), len(F))
         try:
             fr, info, fp = extract_frames(vp, project.frames_dir / f"v{vid:02d}", f"frames/v{vid:02d}",
                                           skip=skip_ranges, min_gap=min_gap, keep_diff=keep_diff,
                                           keep=detector.add)
-            print(f"        kept {len(fr)} frames from {info['shots']} shots ({info['duration'] / 60:.1f} min)")
+            print("  • " + t("{n} frames taken from {shots} shots ({minutes} min)", n=len(fr), shots=info["shots"],
+                             minutes=f"{info['duration'] / 60:.1f}"))
             new_dets, newF = detector.finish()
         except BaseException:
             detector.abort()
@@ -184,8 +188,11 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
             f["vid"] = vid
         n_feat = sum(d["feat"] >= 0 for d in new_dets)
         n_saved = len({d["frame"] for d in new_dets if d["feat"] >= 0})
-        print(f"        {len(new_dets)} character detections, {n_feat} large enough to identify")
-        print(f"        {n_saved} frames saved ({len(fr) - n_saved} without a character to identify not kept)")
+        print("  • " + t("{n} character appearances, {k} of them big enough to recognise", n=len(new_dets),
+                         k=n_feat))
+        print("  • " + t("{n} frames saved", n=n_saved)
+              + (t("; {n} frames without a character to recognise were not kept", n=len(fr) - n_saved)
+                 if len(fr) > n_saved else ""))
 
         frames += fr
         dets += new_dets
@@ -199,7 +206,7 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
         project.save("project.json", proj)
 
     if not dets:
-        raise SystemExit("[scan] no characters detected")
+        raise SystemExit("no characters detected")
     if auto_skip:
         detect_repeats(project, auto_min)
     run_clusters(project)
@@ -209,6 +216,7 @@ def run_clusters(project, cut=0.2, min_size=8, max_samples=4000):
     from sklearn.cluster import AgglomerativeClustering
 
     project.require_frames()
+    print(t("Grouping the characters"))
     frames, dets, F = load_state(project)
     cand = [d for d in dets if d["feat"] >= 0 and d["head"] is not None and d["rh"] >= 0.2
             and frame_in_use(frames[d["frame"]])]
@@ -216,8 +224,8 @@ def run_clusters(project, cut=0.2, min_size=8, max_samples=4000):
         rng = np.random.default_rng(0)
         cand = [cand[i] for i in sorted(rng.choice(len(cand), max_samples, replace=False))]
     if len(cand) < min_size:
-        raise SystemExit("[clusters] not enough clear character views to cluster")
-    print(f"[clusters] clustering {len(cand)} clear character views ...")
+        raise SystemExit("not enough clear character views to cluster")
+    print("  • " + t("{n} clear views of characters", n=len(cand)))
     D = ccip_matrix(F[[d["feat"] for d in cand]])
     labels = AgglomerativeClustering(n_clusters=None, metric="precomputed", linkage="average",
                                      distance_threshold=cut).fit(D).labels_
@@ -231,12 +239,12 @@ def run_clusters(project, cut=0.2, min_size=8, max_samples=4000):
     contact_sheets(project, frames, dets, clusters)
 
     n_small = len(cand) - sum(len(c["members"]) for c in clusters)
-    print(f"[clusters] {len(clusters)} characters found ({n_small} views in groups smaller than {min_size})")
+    print("  • " + t("{n} characters found; {k} views in groups smaller than {size} are hidden", n=len(clusters),
+                     k=n_small, size=min_size))
     for c in clusters:
         vids = sorted({frames[dets[m]["frame"]]["vid"] for m in c["members"]})
-        print(f"   #{c['id']:<3} {len(c['members']):>5} views   episodes: {', '.join(f'v{v:02d}' for v in vids)}")
-    print(f"\nOpen  {project.clusters_dir / 'overview.jpg'}")
-    print("and pick the cluster number(s) of your character (a character can be split across several clusters).")
+        print("    " + t("#{id}: {n} views, episodes {episodes}", id=c["id"], n=len(c["members"]),
+                         episodes=", ".join(f"v{v:02d}" for v in vids)))
 
 
 def split_cluster(project, cid, cut=0.14, min_size=3):
@@ -271,8 +279,9 @@ def split_cluster(project, cid, cut=0.14, min_size=3):
     project.save("scan/clusters.json", data)
     contact_sheets(project, frames, dets, clusters)
     n_lost = len(D) - sum(len(p) for p in parts)
-    print(f"[split] #{cid} -> " + ", ".join(f"#{i} ({len(p)})" for i, p in zip(new_ids, parts))
-          + (f"; {n_lost} stray views dropped" if n_lost else ""))
+    print(t("Cluster #{id} split into {parts}", id=cid,
+            parts=t(", ").join(t("#{id} ({n} views)", id=i, n=len(p)) for i, p in zip(new_ids, parts)))
+          + (t("; {n} views that fit nowhere were left out", n=n_lost) if n_lost else ""))
 
 
 def _thumb(project, frames, det, cell, cache):
@@ -313,15 +322,15 @@ def contact_sheets(project, frames, dets, clusters, per_row=10, cell=(150, 200))
     cw, ch = cell
 
     rows = []
-    for c in tqdm(clusters, desc="  sheets", leave=False):
+    for c in tqdm(clusters, desc=t("Drawing the character cards"), unit=t("characters"), leave=False):
         check_cancel()
         row = Image.new("RGB", (label_w + per_row * (cw + pad), ch + 2 * pad), (32, 32, 36))
         d = ImageDraw.Draw(row)
         d.text((12, 20), f"#{c['id']}", fill=(255, 220, 90), font=font)
         d.text((12, 60), f"{len(c['members'])} views", fill=(200, 200, 200), font=small)
         for k, m in enumerate(_spread(c["members"], dets, per_row)):
-            t = _thumb(project, frames, dets[m], cell, cache)
-            row.paste(t, (label_w + k * (cw + pad) + (cw - t.width) // 2, pad + (ch - t.height) // 2))
+            tile = _thumb(project, frames, dets[m], cell, cache)
+            row.paste(tile, (label_w + k * (cw + pad) + (cw - tile.width) // 2, pad + (ch - tile.height) // 2))
         rows.append(row)
 
         picks = _spread(c["members"], dets, 40)
@@ -329,18 +338,18 @@ def contact_sheets(project, frames, dets, clusters, per_row=10, cell=(150, 200))
         sheet = Image.new("RGB", (cols * (cw + pad) + pad, ((len(picks) + cols - 1) // cols) * (ch + pad) + pad + 40), (32, 32, 36))
         ImageDraw.Draw(sheet).text((10, 6), f"Cluster #{c['id']} - {len(c['members'])} views", fill=(255, 220, 90), font=font)
         for k, m in enumerate(picks):
-            t = _thumb(project, frames, dets[m], cell, cache)
-            x = pad + (k % cols) * (cw + pad) + (cw - t.width) // 2
-            y = 40 + pad + (k // cols) * (ch + pad) + (ch - t.height) // 2
-            sheet.paste(t, (x, y))
+            tile = _thumb(project, frames, dets[m], cell, cache)
+            x = pad + (k % cols) * (cw + pad) + (cw - tile.width) // 2
+            y = 40 + pad + (k // cols) * (ch + pad) + (ch - tile.height) // 2
+            sheet.paste(tile, (x, y))
         sheet.save(out / f"cluster_{c['id']:02d}.jpg", quality=88)
 
         card = Image.new("RGB", (3 * (cw + pad) + pad, 2 * (ch + pad) + pad + 36), (32, 32, 36))
         ImageDraw.Draw(card).text((10, 4), f"#{c['id']}   {len(c['members'])}", fill=(255, 220, 90), font=font)
         for k, m in enumerate(_spread(c["members"], dets, 6)):
-            t = _thumb(project, frames, dets[m], cell, cache)
-            card.paste(t, (pad + (k % 3) * (cw + pad) + (cw - t.width) // 2,
-                           36 + pad + (k // 3) * (ch + pad) + (ch - t.height) // 2))
+            tile = _thumb(project, frames, dets[m], cell, cache)
+            card.paste(tile, (pad + (k % 3) * (cw + pad) + (cw - tile.width) // 2,
+                              36 + pad + (k // 3) * (ch + pad) + (ch - tile.height) // 2))
         card.save(out / f"card_{c['id']:02d}.jpg", quality=88)
 
     if rows:

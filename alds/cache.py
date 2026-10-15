@@ -38,7 +38,6 @@ class CropCache:
         self.file = self.dir / "crops.pkl"
         self.img_dir = self.dir / "images"
         self.entries, self.matches, self.central = {}, {}, {}
-        self.computed = 0
         self.fresh, self.made, self.discarded = fresh, set(), False
         data = None
         if self.file.exists() and not fresh:
@@ -64,7 +63,6 @@ class CropCache:
     def get(self, rec, key, compute):
         if key not in rec:
             rec[key] = compute()
-            self.computed += 1
         return rec[key]
 
     def scores(self, key, ids, compute):
@@ -72,7 +70,6 @@ class CropCache:
         missing = [i for i in ids if i not in known]
         if missing:
             known.update(zip(missing, compute(missing).tolist()))
-            self.computed += 1
         self.matches[key] = known
         for old in list(self.matches)[:-MAX_REF_SETS]:
             del self.matches[old]
@@ -86,7 +83,6 @@ class CropCache:
             compute().save(tmp, compress_level=PNG_LEVEL)
             tmp.replace(p)
             self.made.add(p)
-            self.computed += 1
         return p
 
     def discard(self):

@@ -8,6 +8,7 @@ from . import negatives
 from .cache import file_hash, link_or_copy, unlinked
 from .cancel import check as check_cancel
 from .common import inside, load_json, plain_name, save_json
+from .i18n import t
 from .outfits import token_matcher
 from .tags import BOX, apply_edit, load_box, load_edits, save_box, split_tags, strip_box
 from .txn import Transaction
@@ -187,9 +188,10 @@ def carry_review(project, name, version):
                 moved += 1
     save_box(current, box)
     save_json(current / "review.json", {"removed": sorted(deleted), "captions": captions, "groups": groups})
-    print(f"[versions] review carried forward: {removed} removals, {changed} captions, {moved} groups"
-          + (f", bulk tag edits applied to {replayed} new captions" if replayed else ""))
-    print(f"[versions] current reviewed result: {len(_images(current))} images")
+    print(t("Your review was carried over: {removed} images removed, {changed} captions edited, {moved} images moved "
+            "to another group", removed=removed, changed=changed, moved=moved)
+          + (t("; tag edits applied to {n} new captions", n=replayed) if replayed else ""))
+    print(t("Images now: {n}", n=len(_images(current))))
 
 
 @contextmanager
@@ -216,7 +218,7 @@ def rebuilding(project, name, ref_dir=None):
         if version:
             carry_review(project, name, version)
     if version:
-        print(f"[versions] previous result saved: {version}")
+        print(t("The previous result was saved as version {id}.", id=version))
 
 
 def restore_version(project, name, version):
@@ -229,4 +231,5 @@ def restore_version(project, name, version):
         for part in PARTS:
             copy_part(saved / "data" / part, char / part)
         copy_part(saved / "refs", refs)
-    print(f"[versions] restored {version}; previous current result saved as {previous}")
+    print(t("✅ Restored version {id}. The result before it was saved as version {previous}.", id=version,
+            previous=previous))

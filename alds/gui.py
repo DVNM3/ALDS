@@ -1,10 +1,13 @@
 import contextlib
+import contextvars
 import functools
 import io
 import json
 import os
 import re
 import shutil
+import sys
+import threading
 from collections import Counter
 from pathlib import Path
 
@@ -118,10 +121,15 @@ html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container 
 .tag-choices label span { unicode-bidi: plaintext; }
 .slider_input_container, input[type=range] { direction: ltr; }
 .ltr textarea, .ltr input { direction: ltr !important; text-align: left !important; }
-#log textarea { direction: ltr; text-align: left; font-family: Consolas, monospace; font-size: 12px; }
+.log textarea { unicode-bidi: plaintext; text-align: start; font-size: 13px; line-height: 1.7; }
+.busy .progress-level-inner { margin: 0 0 6px !important; font-family: inherit !important; font-size: 14px !important;
+  unicode-bidi: plaintext; }
+.busy .progress-bar-wrap { width: 100% !important; height: 10px !important; border-radius: 5px; overflow: hidden; }
+.busy .progress-text { position: static !important; transform: none !important; order: 2; padding: 4px 0 0 !important;
+  font-family: inherit !important; }
 #preview img { object-fit: contain; }
 #upscaler-models label { align-items: center; }
-.model-info { margin-inline-start: 8px; width: 22px; height: 22px; flex: none; border-radius: 50%%; cursor: pointer;
+.model-info { margin-inline-start: 8px; width: 22px; height: 22px; flex: none; border-radius: 50%; cursor: pointer;
   border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary);
   color: var(--body-text-color); font-weight: 700; line-height: 20px; padding: 0; }
 .model-info:hover { border-color: var(--color-accent); color: var(--color-accent); }
@@ -136,9 +144,10 @@ html[dir="rtl"] .gradio-container .body-cell, html[dir="rtl"] .gradio-container 
   color: var(--body-text-color); }
 html[lang="ar"] .toast-title, html[lang="ar"] .wrap.default > span.error { font-size: 0; }
 html[lang="ar"] .toast-title::before, html[lang="ar"] .wrap.default > span.error::before { font-size: 16px; }
-html[lang="ar"] .wrap.default > span.error::before { content: "%s"; }
-""" % AR["Error"] + "".join(f'html[lang="ar"] .toast-title.{kind}::before {{ content: "{AR[word]}"; }}\n'
-                            for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info")))
+html[lang="ar"] .wrap.default > span.error::before { content: "__ERROR__"; }
+""".replace("__ERROR__", AR["Error"]) + "".join(
+    f'html[lang="ar"] .toast-title.{kind}::before {{ content: "{AR[word]}"; }}\n'
+    for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info")))
 
 HEAD = """<script>
 window.aldsLang = (l) => {
@@ -234,22 +243,88 @@ def _session():
     return getattr(LocalContext.request.get(None), "session_hash", None)
 
 
-def releasing(fn):
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            release_models()
-    return wrapper
+def session_lang():
+    return _session_langs.get(_session()) or saved_lang()
 
 
 def localized(fn):
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        with use(_session_langs.get(_session()) or saved_lang()):
+        with use(session_lang()):
             return fn(*args, **kwargs)
     return wrapper
+
+
+_log_to = contextvars.ContextVar("alds_log", default=None)
+
+
+class LogBuffer(io.StringIO):
+    def __init__(self, parent=None):
+        super().__init__()
+        self.parent = parent
+
+    def write(self, text):
+        if self.parent is not None:
+            self.parent.write(text)
+        return super().write(text)
+
+
+class RoutedOutput:
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, text):
+        target = _log_to.get()
+        return (self.stream if target is None else target).write(text)
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
+def route_output():
+    if not isinstance(sys.stdout, RoutedOutput):
+        sys.stdout = RoutedOutput(sys.stdout)
+
+
+def streamed(fn, log_at, n_outputs):
+    def partial(text):
+        return text if n_outputs == 1 else tuple(text if i == log_at else gr.skip() for i in range(n_outputs))
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        with use(session_lang()):
+            context = contextvars.copy_context()
+        log, done = LogBuffer(), {}
+
+        def work():
+            _log_to.set(log)
+            try:
+                done["value"] = fn(*args, **kwargs)
+            except BaseException as e:
+                done["error"] = e
+            finally:
+                release_models()
+
+        route_output()
+        worker = threading.Thread(target=context.run, args=(work,), daemon=True)
+        worker.start()
+        shown = ""
+        try:
+            while worker.is_alive():
+                worker.join(0.3)
+                if log_at is not None and log.getvalue() != shown:
+                    shown = log.getvalue()
+                    yield partial(shown)
+        finally:
+            if worker.is_alive():
+                cancel.request()
+                worker.join()
+        if "error" in done:
+            if log_at is not None and log.getvalue() != shown:
+                yield partial(log.getvalue())
+            raise done["error"]
+        yield done["value"]
+    return run
 
 
 def translated(text):
@@ -304,9 +379,11 @@ def gui_error(e: SystemExit):
 
 
 def captured_result(fn, *args, txn=None):
-    buf = io.StringIO()
+    route_output()
+    buf = LogBuffer(_log_to.get())
+    token = _log_to.set(buf)
     try:
-        with contextlib.redirect_stdout(buf), txn or contextlib.nullcontext():
+        with txn or contextlib.nullcontext():
             result = fn(*args)
     except Cancelled:
         cancel.reset()
@@ -314,6 +391,8 @@ def captured_result(fn, *args, txn=None):
                        title=t("⏹ Stopped"))
     except SystemExit as e:
         raise gui_error(e)
+    finally:
+        _log_to.reset(token)
     return buf.getvalue(), result
 
 
@@ -357,11 +436,16 @@ def stop_label():
 
 def start_ui():
     cancel.reset()
-    return gr.update(visible=True, value=stop_label(), interactive=True)
+    return gr.update(visible=True, value=stop_label(), interactive=True), gr.update(visible=True)
 
 
 def end_ui():
-    return gr.update(visible=False)
+    return gr.update(visible=False), gr.update(visible=False)
+
+
+def running():
+    return (gr.Markdown(visible=False, min_height=72, elem_classes="busy"),
+            gr.Button(stop_label(), variant="stop", visible=False))
 
 
 def press_stop():
@@ -602,7 +686,7 @@ def do_version(pname, char, version=None, restore=False, progress=gr.Progress(tr
                 raise gr.Error(t("No saved version selected."))
             restore_version(p, char, version)
         else:
-            print(f"[versions] saved {save_version(p, char)}")
+            print(t("✅ Saved as version {id}.", id=save_version(p, char)))
     with working_on(p.char_dir(char)):
         log = captured(run)
     _alike_cache.pop(p.char_dir(char), None)
@@ -1357,7 +1441,7 @@ def build_page(demo, gpu):
                                              info=t("A part repeated between episodes is left out only if it's at "
                                                     "least this long. Lower it if a short OP/ED isn't found."))
                         autoskip_btn = gr.Button(t("🔁 Find the OP/ED again in the scanned episodes"))
-                        stop_auto = gr.Button(stop_label(), variant="stop", visible=False)
+                        busy_auto, stop_auto = running()
                         gr.Markdown(t("**Which frames are kept** (for new scans)"))
                         min_gap = gr.Slider(0.1, 2.0, 0.35, step=0.05, label=t("Time between kept frames (seconds)"),
                                             info=t("Lower = more frames from each scene. Higher = fewer frames and "
@@ -1366,7 +1450,7 @@ def build_page(demo, gpu):
                                               info=t("How different a frame must look from the last kept one. "
                                                      "Lower = more, more similar frames. Higher = fewer."))
                     scan_btn = gr.Button(t("▶ Start scanning"), variant="primary")
-                    stop_scan = gr.Button(stop_label(), variant="stop", visible=False)
+                    busy_scan, stop_scan = running()
                 with gr.Column(scale=3):
                     vids_df = gr.Dataframe(headers=VIDEO_COLUMNS, interactive=False, wrap=True,
                                            label=t("Episodes scanned in this project"),
@@ -1385,8 +1469,8 @@ def build_page(demo, gpu):
                                       "Character groups and reviewed images stay as they are."))
                         restore_folder = gr.Textbox(label=t("Episodes folder if moved (optional)"), elem_classes="ltr")
                         restore_frames_btn = gr.Button(t("↶ Restore missing frames"))
-                        stop_restore = gr.Button(stop_label(), variant="stop", visible=False)
-            scan_log = gr.Textbox(lines=12, label=t("Log"), elem_id="log", autoscroll=True)
+                        busy_restore, stop_restore = running()
+            scan_log = gr.Textbox(lines=12, label=t("Log"), elem_classes="log", autoscroll=True)
 
         with gr.Tab(t("2. Pick the character"), id="pick"):
             gr.Markdown(t("Click a character's image to select it, click again to unselect. If the character shows up "
@@ -1413,8 +1497,8 @@ def build_page(demo, gpu):
                         min_csize = gr.Slider(3, 40, 8, step=1, label=t("Hide clusters with fewer views than"),
                                               info=t("Small clusters are usually background characters."))
                         recluster_btn = gr.Button(t("🔁 Re-cluster the whole project"))
-                        stop_clu = gr.Button(stop_label(), variant="stop", visible=False)
-                        recluster_log = gr.Textbox(lines=6, label=t("Log"), elem_id="log")
+                        busy_clu, stop_clu = running()
+                        recluster_log = gr.Textbox(lines=6, label=t("Log"), elem_classes="log")
                 with gr.Column(scale=2):
                     chosen = gr.CheckboxGroup(label=t("Selected clusters"), choices=[])
                     sheet = gr.Image(label=t("Cluster preview"), interactive=False, height=320,
@@ -1463,15 +1547,15 @@ def build_page(demo, gpu):
                                                 label=t("Options"))
                     overwrite = gr.Checkbox(label=t("Rebuild this character: save a version and keep matching reviews"))
                     preview_btn = gr.Button(t("🔎 Preview these settings"))
-                    stop_preview = gr.Button(stop_label(), variant="stop", visible=False)
+                    busy_preview, stop_preview = running()
                     build_btn = gr.Button(t("▶ Build the image set"), variant="primary")
-                    stop_build = gr.Button(stop_label(), variant="stop", visible=False)
+                    busy_build, stop_build = running()
             with gr.Accordion(t("🔎 Settings preview"), open=True):
                 preview_state = gr.State({})
                 preview_summary = gr.Markdown(preview_view({})[1])
                 preview_gal = gr.Gallery(columns=6, height=360, label=t("Accepted and excluded scenes"),
                                          object_fit="contain")
-            build_log = gr.Textbox(lines=14, label=t("Report"), elem_id="log")
+            build_log = gr.Textbox(lines=14, label=t("Report"), elem_classes="log")
 
         with gr.Tab(t("3. Review"), id="review"):
             gr.Markdown(t("Start with ❓ ambiguous identities and ⚠ images to check. Confirm clear examples with "
@@ -1492,11 +1576,11 @@ def build_page(demo, gpu):
                 with gr.Row():
                     version_save = gr.Button(t("💾 Save current version"))
                     version_restore = gr.Button(t("↶ Restore selected version"))
-                stop_version = gr.Button(stop_label(), variant="stop", visible=False)
+                busy_version, stop_version = running()
                 with gr.Row():
                     version_delete_confirm = gr.Checkbox(label=t("Delete the selected version for good"), scale=3)
                     version_delete = gr.Button(t("🗑 Delete version"), variant="stop", scale=1)
-                version_log = gr.Textbox(label=t("Log"), lines=3)
+                version_log = gr.Textbox(label=t("Log"), lines=3, elem_classes="log")
             with gr.Accordion(t("✅ Identity references and feedback preview"), open=False):
                 gr.Markdown(t("Confirm clear examples, especially different angles and outfits. Ambiguous images appear first in All."))
                 with gr.Row():
@@ -1507,7 +1591,7 @@ def build_page(demo, gpu):
                     with gr.Column(scale=2):
                         gr.Markdown(t(IMPACT_NOTE))
                         impact_btn = gr.Button(t("🔎 Preview confirmation and rejection effects"))
-                        stop_impact = gr.Button(stop_label(), variant="stop", visible=False)
+                        busy_impact, stop_impact = running()
                         impact_summary = gr.Markdown()
                         impact_table = gr.Dataframe(headers=IMPACT_COLUMNS, interactive=False)
                 impact_gal = gr.Gallery(label=t("Changed matches (when source frames are available)"),
@@ -1579,7 +1663,7 @@ def build_page(demo, gpu):
                     gr.Markdown(t("**Outfits:** after deleting images in review, separate the outfits again to update "
                                   "them."))
                     t_outfits_btn = gr.Button(t("🧥 Separate the outfits again"))
-                    t_log = gr.Textbox(lines=4, label=t("Log"), elem_id="log")
+                    t_log = gr.Textbox(lines=4, label=t("Log"), elem_classes="log")
 
         with gr.Tab(t("5. Save the result"), id="export"):
             gr.Markdown(t("Saves the reviewed images with their captions in a folder named after the character, inside "
@@ -1592,8 +1676,8 @@ def build_page(demo, gpu):
                                                           "character is made in it)"),
                                        elem_classes="ltr", placeholder="D:\\datasets")
                     export_btn = gr.Button(t("💾 Save the images and captions"), variant="primary")
-                    stop_export = gr.Button(stop_label(), variant="stop", visible=False)
-                    export_log = gr.Textbox(lines=6, label=t("Log"), elem_id="log")
+                    busy_export, stop_export = running()
+                    export_log = gr.Textbox(lines=6, label=t("Log"), elem_classes="log")
                 with gr.Column(scale=2):
                     e_summary = gr.Markdown()
                     groups_df = gr.Dataframe(headers=GROUP_COLUMNS, interactive=False,
@@ -1608,25 +1692,31 @@ def build_page(demo, gpu):
     list_refreshed = refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project,
                                    [project, *proj_outputs])
 
-    def long_action(btn, stop, fn, inputs, outputs):
-        ev = btn.click(L(start_ui), None, stop, queue=False).then(L(releasing(fn)), inputs, outputs, concurrency_id="gpu")
-        ev.then(end_ui, None, stop, queue=False)
-        ev.failure(end_ui, None, stop, queue=False)
+    def long_action(btn, stop, busy, fn, inputs, outputs, log=None):
+        ui = [stop, busy]
+        ev = btn.click(L(start_ui), None, ui, queue=False) \
+            .then(streamed(fn, outputs.index(log) if log else None, len(outputs)), inputs, outputs,
+                  concurrency_id="gpu", show_progress_on=[busy])
+        ev.then(end_ui, None, ui, queue=False)
+        ev.failure(end_ui, None, ui, queue=False)
         return ev
 
     for stop in (stop_scan, stop_auto, stop_clu, stop_build, stop_export, stop_restore, stop_preview, stop_version, stop_impact):
         stop.click(L(press_stop), None, stop, queue=False)
 
-    scanned = long_action(scan_btn, stop_scan, do_scan, [project, videos, skip, auto, auto_min, min_gap, keep_diff],
-                [scan_log, project, *proj_outputs])
-    autoskipped = long_action(autoskip_btn, stop_auto, do_autoskip, [project, auto, auto_min], [scan_log, *proj_outputs])
-    reclustered = long_action(recluster_btn, stop_clu, do_recluster, [project, cut, min_csize],
-                [recluster_log, clusters_gal, chosen])
-    split = long_action(split_btn, stop_clu, do_split, [project, chosen, split_cut], [recluster_log, clusters_gal, chosen])
+    scanned = long_action(scan_btn, stop_scan, busy_scan, do_scan,
+                          [project, videos, skip, auto, auto_min, min_gap, keep_diff],
+                          [scan_log, project, *proj_outputs], scan_log)
+    autoskipped = long_action(autoskip_btn, stop_auto, busy_auto, do_autoskip, [project, auto, auto_min],
+                              [scan_log, *proj_outputs], scan_log)
+    reclustered = long_action(recluster_btn, stop_clu, busy_clu, do_recluster, [project, cut, min_csize],
+                              [recluster_log, clusters_gal, chosen], recluster_log)
+    split = long_action(split_btn, stop_clu, busy_clu, do_split, [project, chosen, split_cut],
+                        [recluster_log, clusters_gal, chosen], recluster_log)
     clean_safe_btn.click(L(lambda p: do_clean(p, False, False)), project, [scan_log, usage], concurrency_id="gpu")
     clean_all_btn.click(L(lambda p, c: do_clean(p, True, c)), [project, clean_confirm], [scan_log, usage], concurrency_id="gpu")
-    long_action(restore_frames_btn, stop_restore, do_restore_frames, [project, restore_folder],
-                [scan_log, usage, vids_df])
+    long_action(restore_frames_btn, stop_restore, busy_restore, do_restore_frames, [project, restore_folder],
+                [scan_log, usage, vids_df], scan_log)
     clusters_gal.select(L(pick_cluster), [project, chosen], [chosen, sheet])
     upscale_on.change(lambda on: gr.update(visible=on), upscale_on, upscale_box, queue=False)
     model_in = [upscale_on, upscaler, upscale_version]
@@ -1639,14 +1729,14 @@ def build_page(demo, gpu):
     build_inputs = [project, chosen, refs, name, series, upscale_on, upscaler, upscale_version, upscale_to, threshold,
                     min_height, sim, relax,
                     tagger, opts, overwrite]
-    long_action(preview_btn, stop_preview, do_preview, build_inputs,
-                [preview_gal, preview_summary, build_log, preview_state])
+    long_action(preview_btn, stop_preview, busy_preview, do_preview, build_inputs,
+                [preview_gal, preview_summary, build_log, preview_state], build_log)
     def clear_preview():
         return [], t("Settings or identity feedback changed. Run the preview again to see the updated result."), {}
     for control in build_inputs:
         control.change(L(clear_preview), None, [preview_gal, preview_summary, preview_state], concurrency_id="gpu")
-    built = long_action(build_btn, stop_build, do_build, build_inputs,
-                [build_log, r_char, e_char, t_char, tabs]) \
+    built = long_action(build_btn, stop_build, busy_build, do_build, build_inputs,
+                        [build_log, r_char, e_char, t_char, tabs], build_log) \
         .success(L(change_char), [project, r_char],
                  [r_filter, move_to, r_gal, r_img, r_caption, r_info, files_st, idx_st, r_stats]) \
         .success(L(version_choices), [project, r_char], version_pick) \
@@ -1662,9 +1752,10 @@ def build_page(demo, gpu):
     version_pick.change(L(version_comparison), [project, r_char, version_pick], version_diff)
     version_delete.click(L(do_delete_version), [project, r_char, version_pick, version_delete_confirm],
                          [version_log, version_pick, version_delete_confirm], concurrency_id="review")
-    long_action(version_save, stop_version, do_version, [project, r_char], [version_log, version_pick, undo_st])
-    restored = long_action(version_restore, stop_version, do_restore_version, [project, r_char, version_pick],
-                [version_log, version_pick, undo_st]) \
+    long_action(version_save, stop_version, busy_version, do_version, [project, r_char],
+                [version_log, version_pick, undo_st], version_log)
+    restored = long_action(version_restore, stop_version, busy_version, do_restore_version,
+                           [project, r_char, version_pick], [version_log, version_pick, undo_st], version_log) \
         .success(L(change_char), [project, r_char], [r_filter, move_to, *rv_out])
     r_filter.change(L(load_review), [project, r_char, r_filter], rv_out)
     r_gal.select(L(select_image), [project, r_char, files_st], rv_out)
@@ -1689,7 +1780,7 @@ def build_page(demo, gpu):
         control.change(L(confirmed_view), [project, r_char], confirmed_out)
         control.change(L(clear_impact), None, impact_out, concurrency_id="gpu")
     confirmed_pick.change(L(confirmed_image), [project, r_char, confirmed_pick], confirmed_thumb)
-    long_action(impact_btn, stop_impact, do_feedback_preview, [project, r_char],
+    long_action(impact_btn, stop_impact, busy_impact, do_feedback_preview, [project, r_char],
                 [impact_summary, impact_table, impact_gal, impact_state])
     move_btn.click(L(move_image), [project, r_char, r_filter, files_st, idx_st, move_to], rv_out, concurrency_id="review")
     save_btn.click(L(save_caption), [project, r_char, files_st, idx_st, r_caption], None, concurrency_id="review")
@@ -1728,7 +1819,7 @@ def build_page(demo, gpu):
             .then(L(version_choices), [project, r_char], version_pick) \
             .then(L(tag_views), [project, t_char, t_search, t_goal], [*t_out, *g_out]) \
             .then(L(save_summary), sum_in, sum_out)
-    long_action(export_btn, stop_export, do_save, [project, e_char, e_out], [export_log]) \
+    long_action(export_btn, stop_export, busy_export, do_save, [project, e_char, e_out], [export_log], export_log) \
         .success(L(delete_hint), project, del_hint)
     del_project_btn.click(L(delete_project), [project, del_confirm], [project, del_confirm], concurrency_id="gpu")
 

@@ -172,6 +172,7 @@ def run_command(project, a):
         with txn.scan_txn(project):
             run_scan(project, a.videos, parse_ranges(a.skip), a.min_gap, a.keep_diff, not a.no_auto_skip,
                      a.auto_min)
+        pick_hint(project)
     elif a.cmd == "autoskip":
         from .repeats import clear_repeats, detect_repeats
         from .scan import run_clusters
@@ -181,10 +182,12 @@ def run_command(project, a):
             else:
                 detect_repeats(project, a.min_len)
             run_clusters(project)
+        pick_hint(project)
     elif a.cmd == "clusters":
         from .scan import run_clusters
         with txn.clusters_txn(project):
             run_clusters(project, a.cut, a.min_size, a.max_samples)
+        pick_hint(project)
     elif a.cmd == "split":
         from .scan import split_cluster
         with txn.clusters_txn(project):
@@ -203,6 +206,10 @@ def run_command(project, a):
                       not a.no_screencap_tag, a.tagger, a.keep_text, a.keep_offmodel,
                       a.save_dropped, a.overwrite, a.upscale_to if a.upscale else 0, not a.no_outfits, a.fresh,
                       not a.no_auto_reject, a.keep_mono, a.preview, a.upscaler, a.upscaler_version)
+        if not a.preview:
+            print(f"\nReview:  {project.char_dir(a.name) / 'sorted'}\n"
+                  f"  - check the _review folder first, delete anything that is not {a.name}\n"
+                  f"  - then run:  alds.bat export -p {project.name} -n {a.name}")
     elif a.cmd == "restore-frames":
         from .restore import restore_frames
         restore_frames(project, a.videos_dir)
@@ -264,6 +271,11 @@ def run_command(project, a):
     elif a.cmd == "clean":
         from .cleanup import clean
         clean(project, "all" if a.all else "safe")
+
+
+def pick_hint(project):
+    print(f"\nOpen  {project.clusters_dir / 'overview.jpg'}")
+    print("and pick the cluster number(s) of your character (a character can be split across several clusters).")
 
 
 def run_upscalers(a):

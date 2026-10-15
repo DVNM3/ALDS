@@ -1,5 +1,6 @@
 import functools
 import sys
+import time
 import types
 from pathlib import Path
 from unittest.mock import patch
@@ -8,7 +9,7 @@ import numpy as np
 from PIL import Image
 
 from alds import aitk, gui, build, identity, positives, negatives, cancel, cleanup
-from alds.i18n import use
+from alds.i18n import t, use
 from test_preservation import ProjectTest
 
 
@@ -271,11 +272,33 @@ class GuiTests(ProjectTest):
         module = types.ModuleType("imgutils.fake")
         module.open_model = functools.lru_cache()(lambda name: object())
         with patch.dict(sys.modules, {"imgutils.fake": module}):
-            gui.releasing(lambda: module.open_model("tagger"))()
+            list(gui.streamed(lambda: module.open_model("tagger"), None, 1)())
             self.assertEqual(module.open_model.cache_info().currsize, 0)
             def failing_build():
                 module.open_model("tagger")
                 raise RuntimeError("build failed")
             with self.assertRaises(RuntimeError):
-                gui.releasing(failing_build)()
+                list(gui.streamed(failing_build, None, 1)())
             self.assertEqual(module.open_model.cache_info().currsize, 0)
+
+    def test_long_actions_show_each_step_while_they_run(self):
+        aitk.save_settings(ui_lang="ar")
+
+        def action():
+            log = gui.captured(lambda: print(t("Finding the character")))
+            time.sleep(0.7)
+            return log, "result"
+        updates = list(gui.streamed(action, 0, 2)())
+        self.assertGreater(len(updates), 1)
+        self.assertEqual(updates[0], ("البحث عن الشخصية\n", gui.gr.skip()))
+        self.assertEqual(updates[-1], ("البحث عن الشخصية\n", "result"))
+
+    def test_stopped_action_keeps_its_steps_and_says_what_was_undone(self):
+        def action():
+            gui.captured(lambda: (print("Step 1"), cancel.request(), cancel.check()))
+        updates = gui.streamed(action, 0, 1)()
+        with use("en"), self.assertRaises(gui.gr.Error):
+            for text in updates:
+                last = text
+        self.assertEqual(last, "Step 1\n")
+        cancel.check()

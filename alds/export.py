@@ -6,6 +6,7 @@ import numpy as np
 
 from .cancel import check as check_cancel
 from .common import safe_name
+from .i18n import t
 
 
 def group_of(sorted_dir: Path, png: Path) -> str:
@@ -118,17 +119,17 @@ def run_export(project, name, out, max_per_group=None, total=None, aitk=None):
                 captions.append([t.strip() for t in txt.read_text(encoding="utf-8").split(",")])
             else:
                 missing += 1
-    print(f"[export] {n} of {sum(len(v) for v in groups.values())} images -> {out}")
+    print(t("✅ Saved {n} of {total} images in {folder}", n=n, total=sum(len(v) for v in groups.values()), folder=out))
     if total or max_per_group:
         for g in sorted(groups, key=lambda g: -len(groups[g])):
             print(f"   {g:<28} {len(picked[g]):>4} / {len(groups[g])}")
     if missing:
-        print(f"[export] warning: {missing} images have no caption .txt")
+        print(t("⚠ {n} images have no caption file", n=missing))
     if aitk:
         write_aitk_config(project, name, out, n, captions, aitk)
     else:
-        print(f"\nAI Toolkit: point the dataset folder_path at\n  {out.as_posix()}\n"
-              f"with caption extension 'txt'. The captions already contain the trigger '{name}'.")
+        print("\n" + t("In AI Toolkit, set the dataset folder to {folder} and the caption extension to txt. The "
+                        "captions already contain the trigger word {name}.", folder=out.as_posix(), name=name))
 
 
 def write_aitk_config(project, name, out, n_images, captions, aitk):

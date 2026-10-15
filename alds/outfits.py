@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .i18n import t
 from .tags import absorb, edit_tags, restore, split_tags
 
 GARMENTS = {
@@ -104,7 +105,7 @@ def _knn_purity(E, labels, k=K):
     return {l: float(same[labels == l].mean()) for l in set(labels.tolist())}, nn
 
 
-def run_outfits(project, name):
+def run_outfits(project, name, say=print):
     from scipy.spatial.distance import pdist, squareform
     from sklearn.cluster import AgglomerativeClustering
 
@@ -213,9 +214,10 @@ def run_outfits(project, name):
     if outfits:
         for o in outfits:
             total = sum(1 for v in assign.values() if v == o["id"])
-            print(f"[outfits] {o['token']}: {total} images - {', '.join(o['tags']) or '(visual only)'}")
+            say("  • " + t("{token}: {n} images ({tags})", token=o["token"], n=total,
+                           tags=", ".join(o["tags"]) or t("told apart by look only")))
         if len(rows) - len(assign):
-            print(f"[outfits] {len(rows) - len(assign)} images without a clear outfit (no token)")
+            say("  • " + t("{n} images without a clear outfit get no outfit tag", n=len(rows) - len(assign)))
     else:
-        print("[outfits] one outfit only (or not enough clothing visible) - no outfit tokens added")
+        say("  • " + t("One outfit only, or too little clothing in view: no outfit tags added"))
     return outfits
