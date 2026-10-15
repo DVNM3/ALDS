@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from .angles import face_pose
 from .cache import CropCache, digest, link_or_copy
-from .cancel import check as check_cancel
+from .cancel import Cancelled, check as check_cancel
 from .captions import (FRAMING_TAGS, appearance_tags, classify, low_scores, make_caption, people_count,
                        recover_details)
 from .common import box_area, box_iou, frame_in_use, save_json
@@ -390,6 +390,9 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                          "t": fr["t"], "type": it["type"], "ccip": it["score"], "how": it["how"],
                          "sharp": round(it["sharp"], 1), "framing": framing, "view": view, "caption": caption,
                          "upscaled": round(factor, 2), "upscaler": upscaler if factor > 1 else None, "pose": pose})
+    except (Cancelled, KeyboardInterrupt):
+        cache.discard()
+        raise
     finally:
         cache.save()
 

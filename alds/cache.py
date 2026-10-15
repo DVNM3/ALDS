@@ -39,6 +39,7 @@ class CropCache:
         self.img_dir = self.dir / "images"
         self.entries, self.matches, self.central = {}, {}, {}
         self.computed = 0
+        self.fresh, self.made, self.discarded = fresh, set(), False
         data = None
         if self.file.exists() and not fresh:
             try:
@@ -47,7 +48,7 @@ class CropCache:
                 pass
         if data and data.get("version") == VERSION:
             self.entries, self.matches, self.central = data["entries"], data["matches"], data["central"]
-        else:
+        elif not fresh:
             shutil.rmtree(self.dir, ignore_errors=True)
 
     def entry(self, det, frame):
@@ -79,15 +80,30 @@ class CropCache:
 
     def image(self, det_id, ctype, size, compute):
         p = self.img_dir / f"{det_id}_{ctype}_{size}.png"
-        if not p.exists():
+        if not p.exists() or (self.fresh and p not in self.made):
             self.img_dir.mkdir(parents=True, exist_ok=True)
             tmp = p.with_name(p.stem + ".tmp.png")
             compute().save(tmp, compress_level=PNG_LEVEL)
             tmp.replace(p)
+            self.made.add(p)
             self.computed += 1
         return p
 
+    def discard(self):
+        self.discarded = True
+        for p in self.made:
+            p.unlink(missing_ok=True)
+        for folder in (self.img_dir, self.dir):
+            if folder.is_dir() and not any(folder.iterdir()):
+                folder.rmdir()
+
     def save(self):
+        if self.discarded:
+            return
+        if self.fresh:
+            for f in self.img_dir.glob("*.png") if self.img_dir.exists() else ():
+                if f not in self.made:
+                    f.unlink()
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self.file.with_suffix(".tmp")
         tmp.write_bytes(pickle.dumps({"version": VERSION, "entries": self.entries, "matches": self.matches,

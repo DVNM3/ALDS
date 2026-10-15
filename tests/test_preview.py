@@ -6,7 +6,7 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-from alds import build, txn
+from alds import build, cancel, txn
 from test_preservation import ProjectTest
 
 TAGS = {"solo": 1.0, "1girl": 1.0, "upper body": 1.0}
@@ -156,4 +156,19 @@ class PreviewTests(ProjectTest):
             with self.assertRaises(RuntimeError):
                 self.preview()
         self.assertEqual(self.files(self.out), before)
+        self.assertEqual(self.files(self.char), before_current)
+
+    def test_stopped_build_keeps_none_of_its_analysis(self):
+        self.preview()
+        cache = self.p.dir / "cache"
+        before, before_current = self.files(cache), self.files(self.char)
+        enlarge = lambda img, factor, model, version: img.resize((img.width * 2, img.height * 2))
+        with patch.object(build, "upscale_image", side_effect=enlarge), \
+                patch.object(build, "link_or_copy", side_effect=cancel.Cancelled), \
+                patch.object(build, "image_stats", return_value=(90.0, 30.0)):
+            with self.assertRaises(cancel.Cancelled):
+                with txn.build_txn(self.p, "hero"):
+                    build.run_build(self.p, "hero", [1], None, 0.13, 1.0, 0.5, 0.8, None, True, "EVA02_Large",
+                                    False, False, False, True, upscale_to=128, fresh=True)
+        self.assertEqual(self.files(cache), before)
         self.assertEqual(self.files(self.char), before_current)
