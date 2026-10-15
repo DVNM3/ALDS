@@ -338,10 +338,10 @@ BUSY = "This character is being rebuilt, restored or saved. Try again when it fi
 
 def guarded(fn):
     @functools.wraps(fn)
-    def run(pname, char, *args):
+    def run(pname, char, *args, **kwargs):
         if pname and char and is_busy(char_dir_of(pname, char)):
             raise gr.Error(t(BUSY))
-        return fn(pname, char, *args)
+        return fn(pname, char, *args, **kwargs)
     return run
 
 
@@ -1509,10 +1509,9 @@ def build_page(demo, gpu):
                 del_project_btn = gr.Button(t("🗑 Delete the project"), variant="stop")
 
     proj_outputs = [vids_df, clusters_gal, chosen, r_char, e_char, t_char, usage]
-    project.change(L(load_project), project, proj_outputs) \
-        .then(L(version_choices), [project, r_char], version_pick)
-    refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project, [project, *proj_outputs]) \
-        .then(L(version_choices), [project, r_char], version_pick)
+    project_loaded = project.change(L(load_project), project, proj_outputs)
+    list_refreshed = refresh.click(L(lambda p: (gr.update(choices=projects()), *load_project(p))), project,
+                                   [project, *proj_outputs])
 
     def long_action(btn, stop, fn, inputs, outputs):
         ev = btn.click(L(start_ui), None, stop, queue=False).then(L(releasing(fn)), inputs, outputs, concurrency_id="gpu")
@@ -1617,6 +1616,11 @@ def build_page(demo, gpu):
     tabs.select(L(delete_hint), project, del_hint)
     project.change(L(delete_hint), project, del_hint)
     tabs.select(L(tag_view), [project, t_char, t_search], t_out)
+    for event in (project_loaded, list_refreshed):
+        event.then(L(change_char), [project, r_char], [r_filter, move_to, *rv_out]) \
+            .then(L(version_choices), [project, r_char], version_pick) \
+            .then(L(tag_view), [project, t_char, t_search], t_out) \
+            .then(L(save_summary), sum_in, sum_out)
     long_action(export_btn, stop_export, do_save, [project, e_char, e_out], [export_log]) \
         .success(L(delete_hint), project, del_hint)
     del_project_btn.click(L(delete_project), [project, del_confirm], [project, del_confirm], concurrency_id="gpu")

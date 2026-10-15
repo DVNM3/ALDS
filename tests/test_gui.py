@@ -158,6 +158,38 @@ class GuiTests(ProjectTest):
         self.assertEqual(dropdown["choices"], [])
         self.assertFalse(confirm)
 
+    def test_tags_tab_adds_replaces_removes_and_undoes(self):
+        char = self.write_build(captions={"a": "hero, solo, smile", "b": "hero, solo"})
+        caption = lambda stem: next((char / "sorted").rglob(stem + ".txt")).read_text(encoding="utf-8")
+        with use("en"):
+            gui.tag_add(self.p.name, "hero", "blush", "")
+            self.assertIn("blush", caption("a"))
+            gui.tag_replace(self.p.name, "hero", ["smile"], "grin", "")
+            self.assertIn("grin", caption("a"))
+            self.assertNotIn("smile", caption("a"))
+            gui.tag_remove(self.p.name, "hero", ["solo"], "")
+            self.assertNotIn("solo", caption("b"))
+            gui.tag_undo(self.p.name, "hero", "")
+            self.assertIn("solo", caption("b"))
+
+    def test_tag_edits_wait_for_the_character_being_rebuilt(self):
+        char = self.write_build()
+        with gui.working_on(char), use("en"):
+            for edit in (lambda: gui.tag_add(self.p.name, "hero", "blush", ""),
+                         lambda: gui.tag_remove(self.p.name, "hero", ["generated a"], ""),
+                         lambda: gui.tag_replace(self.p.name, "hero", ["generated a"], "x", "")):
+                with self.assertRaises(gui.gr.Error):
+                    edit()
+
+    def test_switching_project_reloads_review_tags_and_save_views(self):
+        ui = gui.build_ui("en")
+        fns = list(ui.fns.values())
+        for start in [f for f in fns if f.fn and f.fn.__name__ == "load_project"]:
+            names, current = [], start
+            while current := next((f for f in fns if f.trigger_after == current._id), None):
+                names.append(current.fn.__name__ if current.fn else None)
+            self.assertEqual(names[:4], ["change_char", "version_choices", "tag_view", "save_summary"])
+
     def test_long_actions_free_the_models_when_done(self):
         module = types.ModuleType("imgutils.fake")
         module.open_model = functools.lru_cache()(lambda name: object())
