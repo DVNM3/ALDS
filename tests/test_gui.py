@@ -7,7 +7,7 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-from alds import aitk, gui, build, identity, positives, negatives, cancel
+from alds import aitk, gui, build, identity, positives, negatives, cancel, cleanup
 from alds.i18n import use
 from test_preservation import ProjectTest
 
@@ -171,6 +171,47 @@ class GuiTests(ProjectTest):
             files, idx = gui.move_image(self.p.name, "hero", "upper_body/side", files, 0, "close_up/back")[4:6]
             self.assertEqual((files, idx), ([], 0))
             self.assertTrue((sorted_dir / "close_up" / "back" / "a.png").exists())
+
+    def test_moving_the_last_image_out_removes_the_empty_folders(self):
+        char = self.write_build(stems=("a",))
+        sorted_dir = char / "sorted"
+        review = negatives.move_pair(sorted_dir / "upper_body" / "front" / "a.png",
+                                     sorted_dir / "_review" / "close_up" / "front")
+        self.assertFalse((sorted_dir / "upper_body").exists())
+        trashed = negatives.trash(char, review)
+        self.assertFalse((sorted_dir / "_review").exists())
+        self.assertTrue(sorted_dir.is_dir())
+        negatives.move_pair(trashed, review.parent)
+        self.assertTrue(review.exists() and review.with_suffix(".txt").exists())
+        self.assertEqual(list((char / "_deleted").iterdir()), [])
+
+    def test_review_folder_goes_when_its_last_image_is_deleted_and_comes_back_on_undo(self):
+        char = self.write_build(stems=("a",))
+        sorted_dir = char / "sorted"
+        png = negatives.move_pair(sorted_dir / "upper_body" / "front" / "a.png",
+                                  sorted_dir / "_review" / "upper_body" / "front")
+        Image.new("RGB", (64, 64)).save(png)
+        meta = self.p.load("characters/hero/build.json")
+        meta["items"][0].update(file=str(png.relative_to(char)), t=0, vid=1, type="full", ccip=0.12, sharp=100)
+        self.p.save("characters/hero/build.json", meta)
+        with use("en"):
+            files = gui.list_files(self.p.name, "hero", "all")
+            undo = gui.delete_image(self.p.name, "hero", "all", files, 0, [])[7]
+            self.assertFalse((sorted_dir / "_review").exists())
+            gui.undo_delete(self.p.name, "hero", "all", [], 0, undo)
+        self.assertTrue(png.exists())
+        self.assertEqual(list((char / "_deleted").iterdir()), [])
+
+    def test_safe_clean_removes_folders_left_empty(self):
+        char = self.write_build(stems=("a",))
+        (char / "sorted" / "_review" / "close_up" / "front").mkdir(parents=True)
+        (char / "_deleted" / "full_body" / "side").mkdir(parents=True)
+        with patch.object(cleanup, "load_state", return_value=([], [], None)), \
+                patch.object(cleanup, "unused_images", return_value=[]):
+            cleanup.clean(self.p)
+        self.assertFalse((char / "sorted" / "_review").exists())
+        self.assertFalse((char / "_deleted" / "full_body").exists())
+        self.assertTrue((char / "sorted" / "upper_body" / "front" / "a.png").exists())
 
     def test_deleting_a_version_needs_confirmation(self):
         self.write_build()

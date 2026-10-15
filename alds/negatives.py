@@ -79,7 +79,34 @@ def move_pair(png: Path, dst_dir: Path) -> Path:
         except BaseException:
             shutil.move(str(dst), str(png))
             raise
+    prune_empty(png.parent)
     return dst
+
+
+KEPT_FOLDERS = ("sorted", "_deleted")
+
+
+def prune_empty(folder: Path):
+    try:
+        while folder.name not in KEPT_FOLDERS and folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
+            folder = folder.parent
+    except OSError:
+        pass
+
+
+def remove_empty_folders(root: Path) -> int:
+    if not root.is_dir():
+        return 0
+    removed = 0
+    for folder in sorted((p for p in root.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+        try:
+            if not any(folder.iterdir()):
+                folder.rmdir()
+                removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 def trash(char_dir: Path, png: Path) -> Path:

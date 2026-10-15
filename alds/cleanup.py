@@ -3,6 +3,7 @@ from pathlib import Path
 
 from .cache import unused_images
 from .common import frame_in_use
+from .negatives import KEPT_FOLDERS, remove_empty_folders
 from .scan import load_state
 from .versions import prune_store
 
@@ -71,5 +72,7 @@ def clean(project, mode="safe"):
             for name in sub:
                 shutil.rmtree(c / name, ignore_errors=True)
             prune_store(c / "versions")
+            for name in KEPT_FOLDERS:
+                remove_empty_folders(c / name)
     after = sum(b for _, b in disk_usage(project))
     print(f"[clean] {mode}: removed {removed_files} frames, freed {fmt_bytes(before - after)}")
