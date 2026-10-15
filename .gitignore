@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 projects/
 settings.json
+testsprite_tests/
