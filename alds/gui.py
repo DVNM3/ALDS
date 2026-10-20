@@ -140,6 +140,14 @@ html[dir="rtl"] .gradio-container .wrap-inner .icon-wrap { right: auto; left: va
 #preview img { object-fit: contain; }
 .file-preview .filename, .file-preview .download { direction: ltr; unicode-bidi: isolate; }
 #top-bar, .inline-row { align-items: flex-end; }
+#review-gallery { position: relative; }
+#review-gallery button.thumbnail-item[data-picked] { outline: 3px solid var(--color-accent); outline-offset: -3px; }
+#review-gallery button.thumbnail-item[data-picked]::after { content: "✓"; position: absolute; top: 6px;
+  inset-inline-start: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--color-accent);
+  color: #fff; font-size: 14px; line-height: 22px; text-align: center; }
+#picked-badge { position: absolute; top: 8px; inset-inline-end: 12px; z-index: 5; padding: 4px 12px;
+  border-radius: 999px; background: var(--color-accent); color: #fff; font-size: 13px; pointer-events: none;
+  display: none; }
 #top-bar > button, .inline-row > button { align-self: flex-end; min-height: 42px; }
 #upscaler-models label { align-items: center; }
 .model-info { margin-inline-start: 8px; width: 22px; height: 22px; flex: none; border-radius: 50%; cursor: pointer;
@@ -161,6 +169,8 @@ html[dir="rtl"] .gradio-container .wrap-inner .icon-wrap { right: auto; left: va
               f'{{ content: "{text}"; }}\n'
               for kind, word in (("error", "Error"), ("warning", "Warning"), ("info", "Info"))
               for lang, text in (("en", word), ("ar", AR[word])))
+
+TAKE_PICKED = "(...args) => { args[args.length - 1] = window.aldsTakePicked ? window.aldsTakePicked() : ''; return args; }"
 
 HEAD = """<script>
 window.aldsLang = (l) => {
@@ -188,6 +198,16 @@ window.aldsSwitch = (v) => {
 document.addEventListener('keydown', (e) => {
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'textarea' || tag === 'input') return;
+  const gallery = document.getElementById('review-gallery');
+  if (gallery && gallery.offsetParent !== null) {
+    if (e.key === 'Escape' && window.aldsPicked.size) { window.aldsPicked.clear(); aldsMark(); e.preventDefault(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      aldsThumbs().forEach((b) => window.aldsPicked.add(aldsStem(b)));
+      aldsMark();
+      e.preventDefault();
+      return;
+    }
+  }
   const click = (id) => { const b = document.getElementById(id); if (b && b.offsetParent !== null) { b.click(); e.preventDefault(); } };
   const rtl = document.documentElement.dir === 'rtl';
   if (e.key === 'Delete') click('btn-del');
@@ -231,7 +251,71 @@ const aldsDecorateModels = () => {
     label.appendChild(b);
   });
 };
-new MutationObserver(aldsDecorateModels).observe(document.documentElement, {childList: true, subtree: true});
+window.aldsPicked = new Set();
+let aldsAnchor = null;
+const aldsThumbs = () => {
+  const g = document.getElementById('review-gallery');
+  return g ? [...g.querySelectorAll('button.thumbnail-item')] : [];
+};
+const aldsStem = (b) => {
+  const img = b.querySelector('img');
+  const src = (img ? decodeURIComponent(img.getAttribute('src') || '') : '').replaceAll(String.fromCharCode(92), '/');
+  return src.split(/[/=]/).pop().replace(/[.][^.]*$/, '');
+};
+const aldsMark = () => {
+  const thumbs = aldsThumbs();
+  const shown = new Set();
+  thumbs.forEach((b) => {
+    const s = aldsStem(b);
+    shown.add(s);
+    if (window.aldsPicked.has(s)) { if (!b.hasAttribute('data-picked')) b.setAttribute('data-picked', ''); }
+    else if (b.hasAttribute('data-picked')) b.removeAttribute('data-picked');
+  });
+  if (thumbs.length) for (const s of [...window.aldsPicked]) if (!shown.has(s)) window.aldsPicked.delete(s);
+  const g = document.getElementById('review-gallery');
+  if (!g) return;
+  let badge = document.getElementById('picked-badge');
+  if (!badge) { badge = document.createElement('div'); badge.id = 'picked-badge'; g.appendChild(badge); }
+  const n = window.aldsPicked.size;
+  const text = !n ? '' : document.documentElement.lang === 'ar'
+    ? `${n} صورة محددة · Esc يلغي التحديد` : `${n} selected · Esc clears`;
+  if (badge.textContent !== text) badge.textContent = text;
+  const display = n ? 'block' : 'none';
+  if (badge.style.display !== display) badge.style.display = display;
+};
+window.aldsTakePicked = () => {
+  const value = JSON.stringify([...window.aldsPicked]);
+  window.aldsPicked.clear();
+  aldsAnchor = null;
+  aldsMark();
+  return value;
+};
+document.addEventListener('click', (e) => {
+  const b = e.target.closest ? e.target.closest('#review-gallery button.thumbnail-item') : null;
+  if (!b) return;
+  const thumbs = aldsThumbs();
+  const i = thumbs.indexOf(b);
+  if (!(e.ctrlKey || e.metaKey || e.shiftKey)) {
+    window.aldsPicked.clear();
+    aldsAnchor = i;
+    aldsMark();
+    return;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  const current = thumbs.findIndex((x) => x.classList.contains('selected'));
+  if (!window.aldsPicked.size && current >= 0) window.aldsPicked.add(aldsStem(thumbs[current]));
+  if (e.shiftKey) {
+    const from = aldsAnchor !== null ? aldsAnchor : Math.max(current, 0);
+    for (let k = Math.min(from, i); k <= Math.max(from, i); k++) window.aldsPicked.add(aldsStem(thumbs[k]));
+  } else {
+    const s = aldsStem(b);
+    if (window.aldsPicked.has(s)) window.aldsPicked.delete(s); else window.aldsPicked.add(s);
+    aldsAnchor = i;
+  }
+  aldsMark();
+}, true);
+new MutationObserver(() => { aldsDecorateModels(); aldsMark(); }).observe(document.documentElement, {childList: true, subtree: true});
 document.addEventListener('click', (e) => {
   const zone = e.target.closest ? e.target.closest('#episode-drop') : null;
   const browse = document.getElementById('episode-browse');
@@ -1005,10 +1089,10 @@ def panel(pname, char, files, idx):
             info += "\n\n" + t("✅ You confirmed this character.")
         elif current["uncertain"]:
             info += "\n\n" + t("❓ Check who this is: a weak match, or close to another character.")
-    if meta and meta["type"] == "own":
+    if meta and meta.get("type") == "own":
         info += "\n\n" + t("📥 Your image: {name} · sharpness {sharp}", name=ltr(meta.get("own", f.name)),
                             sharp=f"{meta['sharp']:.0f}")
-    elif meta:
+    elif meta and meta.get("t") is not None:
         m, s = divmod(int(meta["t"]), 60)
         info += "\n\n" + ("" if meta["type"] == "scene" else t(CROP.get(meta["type"], meta["type"])) + " · ") + t(
             "Episode {ep} at {at} · sharpness {sharp}", ep=f"v{meta['vid']:02d}", at=f"{m}:{s:02d}",
@@ -1070,54 +1154,100 @@ def filter_update(pname, char, flt):
     return gr.update(choices=choices, value=flt if flt in [v for _, v in choices] else "all")
 
 
+def picked_files(files, idx, picked=""):
+    try:
+        stems = set(json.loads(picked)) if picked else set()
+    except (ValueError, TypeError):
+        stems = set()
+    chosen = [f for f in files or [] if Path(f).stem in stems]
+    return chosen or ([files[idx]] if files and 0 <= idx < len(files) else [])
+
+
+def first_position(files, targets, idx):
+    places = [files.index(f) for f in targets if f in files]
+    return min(places) if places else idx
+
+
+def restore_batch(char_dir, batch):
+    from . import negatives, positives
+    for orig, moved, kind in reversed(batch):
+        orig, moved = Path(orig), Path(moved)
+        if not inside(orig, char_dir / "sorted") or not inside(moved, char_dir / "_deleted"):
+            raise gr.Error(t("Nothing to undo"))
+        if kind == "delete":
+            negatives.move_pair(moved, orig.parent)
+        elif positives.unreject(char_dir, moved, orig.parent, kind == "reject-confirmed") is None:
+            raise gr.Error(t("Build this character once to save its identity features."))
+
+
 @guarded
-def delete_image(pname, char, flt, files, idx, undo):
+def delete_image(pname, char, flt, files, idx, undo, picked=""):
     from . import negatives
-    if not files:
+    targets = picked_files(files, idx, picked)
+    if not targets:
         raise gr.Error(t("No image selected"))
-    src = Path(files[idx])
-    undo = (undo or []) + [(str(src), str(negatives.trash(char_dir_of(pname, char), src)), "delete")]
+    char_dir, batch = char_dir_of(pname, char), []
+    try:
+        for f in targets:
+            batch.append((f, str(negatives.trash(char_dir, Path(f))), "delete"))
+    except BaseException:
+        restore_batch(char_dir, batch)
+        raise
+    if len(batch) > 1:
+        gr.Info(t("Removed {n} images. Ctrl+Z puts them all back.", n=len(batch)))
+    undo = (undo or []) + [batch]
+    position = first_position(files, targets, idx)
     files = list_files(pname, char, flt)
-    return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
+    return (*review_outputs(pname, char, files, position), undo, filter_update(pname, char, flt))
 
 
 @guarded
-def reject_image(pname, char, flt, files, idx, undo):
-    from . import positives
-    if not files:
+def reject_image(pname, char, flt, files, idx, undo, picked=""):
+    from . import negatives, positives
+    targets = picked_files(files, idx, picked)
+    if not targets:
         raise gr.Error(t("No image selected"))
-    char_dir, src = char_dir_of(pname, char), Path(files[idx])
-    was_confirmed = src.stem in positives.load(char_dir)[0]
-    dst = positives.reject_image(char_dir, src)
-    if dst is None:
+    char_dir = char_dir_of(pname, char)
+    built, _ = negatives.build_features(char_dir)
+    if any(Path(f).stem not in built for f in targets):
         raise gr.Error(t("This character was built by an older version of the program: build it again once so it "
                          "can learn from rejections. Or remove the image with “Bad image”."))
-    undo = (undo or []) + [(str(src), str(dst), "reject-confirmed" if was_confirmed else "reject")]
+    confirmed_names, batch = positives.load(char_dir)[0], []
+    try:
+        for f in targets:
+            kind = "reject-confirmed" if Path(f).stem in confirmed_names else "reject"
+            batch.append((f, str(positives.reject_image(char_dir, Path(f))), kind))
+    except BaseException:
+        restore_batch(char_dir, batch)
+        raise
+    undo = (undo or []) + [batch]
     alike = look_alikes(pname, char)
     n = sum(Path(f).stem in alike for f in list_files(pname, char, "all"))
-    gr.Info(t("Rejected as another character. {n} remaining images look like it: pick “🚫 Like what you "
-              "rejected” under “Show”.", n=n)
-            if n else t("Rejected as another character; every later build leaves out what looks like it."))
+    if len(batch) > 1:
+        gr.Info(t("Rejected {k} images as another character. {n} remaining images look like them: pick “🚫 Like "
+                  "what you rejected” under “Show”.", k=len(batch), n=n)
+                if n else t("Rejected {k} images as another character; every later build leaves out what looks "
+                            "like them.", k=len(batch)))
+    else:
+        gr.Info(t("Rejected as another character. {n} remaining images look like it: pick “🚫 Like what you "
+                  "rejected” under “Show”.", n=n)
+                if n else t("Rejected as another character; every later build leaves out what looks like it."))
+    position = first_position(files, targets, idx)
     files = list_files(pname, char, flt)
-    return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
+    return (*review_outputs(pname, char, files, position), undo, filter_update(pname, char, flt))
 
 
 @guarded
 def undo_delete(pname, char, flt, files, idx, undo):
-    from . import negatives, positives
     if not undo:
         raise gr.Error(t("Nothing to undo"))
     undo = list(undo)
-    orig, moved, kind = undo.pop()
-    orig, moved, char_dir = Path(orig), Path(moved), char_dir_of(pname, char)
-    if not inside(orig, char_dir / "sorted") or not inside(moved, char_dir / "_deleted"):
-        raise gr.Error(t("Nothing to undo"))
-    if kind == "delete":
-        negatives.move_pair(moved, orig.parent)
-    elif positives.unreject(char_dir, moved, orig.parent, kind == "reject-confirmed") is None:
-        raise gr.Error(t("Build this character once to save its identity features."))
+    entry = undo.pop()
+    batch = entry if entry and isinstance(entry[0], (list, tuple)) else [entry]
+    restore_batch(char_dir_of(pname, char), batch)
     files = list_files(pname, char, flt)
-    idx = files.index(str(orig)) if str(orig) in files else idx
+    first = str(batch[0][0])
+    idx = files.index(first) if first in files else idx
     return (*review_outputs(pname, char, files, idx), undo, filter_update(pname, char, flt))
 
 
@@ -1135,16 +1265,18 @@ def forget_rejected(pname, char, flt, files, idx):
 
 
 @guarded
-def confirm_image(pname, char, flt, files, idx):
+def confirm_image(pname, char, flt, files, idx, picked=""):
     from . import positives
-    if not files:
+    targets = picked_files(files, idx, picked)
+    if not targets:
         raise gr.Error(t("No image selected"))
-    src = files[idx]
-    if not positives.confirm(char_dir_of(pname, char), src):
+    done = [f for f in targets if positives.confirm(char_dir_of(pname, char), f)]
+    if not done:
         raise gr.Error(t("Build this character once to save its identity features."))
-    gr.Info(t("Confirmed. Preview the effect before you build again."))
+    gr.Info(t("Confirmed {n} images. Preview the effect before you build again.", n=len(done)) if len(done) > 1
+            else t("Confirmed. Preview the effect before you build again."))
     files = list_files(pname, char, flt)
-    idx = files.index(src) if src in files else idx
+    idx = files.index(done[0]) if done[0] in files else idx
     return (*review_outputs(pname, char, files, idx), filter_update(pname, char, flt))
 
 
@@ -1226,13 +1358,14 @@ def clear_impact():
 
 
 @guarded
-def move_image(pname, char, flt, files, idx, target):
+def move_image(pname, char, flt, files, idx, target, picked=""):
     from . import negatives
-    if not files or not target:
+    targets = picked_files(files, idx, picked)
+    if not targets or not target:
         raise gr.Error(t("Pick an image and the target group"))
-    dst = negatives.move_pair(Path(files[idx]), sorted_root(pname, char) / target)
+    moved = [negatives.move_pair(Path(f), sorted_root(pname, char) / target) for f in targets]
     files = list_files(pname, char, flt)
-    return review_outputs(pname, char, files, next((i for i, f in enumerate(files) if Path(f) == dst), idx))
+    return review_outputs(pname, char, files, next((i for i, f in enumerate(files) if Path(f) == moved[0]), idx))
 
 
 @guarded
@@ -1520,8 +1653,15 @@ def delete_project(pname, confirm):
 
 
 def title_md(gpu):
-    return ("## " + t("ALDS — LoRA datasets of a character from anime episodes") + "\n"
-            + (t("🟢 The graphics card is used (CUDA)") if gpu else t("🔴 Running on the CPU only (slow)")))
+    from . import __version__
+    from .updates import RELEASES_PAGE, newer
+    text = ("## " + t("ALDS — LoRA datasets of a character from anime episodes") + "\n"
+            + (t("🟢 The graphics card is used (CUDA)") if gpu else t("🔴 Running on the CPU only (slow)"))
+            + f" · v{__version__}")
+    if newer():
+        text += ("\n\n" + t("🆕 Version {version} is out.", version=newer().lstrip("vV"))
+                 + f" [{t('Download it')}]({RELEASES_PAGE})")
+    return text
 
 
 def other_language():
@@ -1710,7 +1850,8 @@ def build_page(demo, gpu):
             gr.Markdown(t("❓ unsure who it is and ⚠ to check come first. **✅** confirms a clear image, and the program "
                           "learns from it · **🚫 N** removes another character and learns to leave it out · "
                           "**🗑 Delete** removes a bad image · **← →** next and previous · **Ctrl+Z** undoes a "
-                          "removal"))
+                          "removal · **Ctrl or Shift + click** picks several images, **Ctrl+A** all of them, and the "
+                          "buttons act on every picked image"))
             with gr.Row(elem_classes="inline-row"):
                 r_filter = gr.Dropdown(label=t("Show"), choices=[(t("All"), "all")], value="all", scale=2)
                 with gr.Column(scale=3):
@@ -1718,7 +1859,7 @@ def build_page(demo, gpu):
             with gr.Row():
                 with gr.Column(scale=3):
                     r_gal = gr.Gallery(columns=6, height=720, allow_preview=False, object_fit="contain",
-                                       show_label=False, buttons=[])
+                                       show_label=False, buttons=[], elem_id="review-gallery")
                 with gr.Column(scale=2):
                     r_img = gr.Image(interactive=False, height=460, show_label=False, elem_id="preview",
                                      buttons=["fullscreen"])
@@ -1737,6 +1878,7 @@ def build_page(demo, gpu):
                         move_to = gr.Dropdown(label=t("Wrong group? Move it to"), choices=[], scale=3)
                         move_btn = gr.Button(t("↪ Move"), scale=1)
             files_st, idx_st, undo_st = gr.State([]), gr.State(0), gr.State([])
+            r_picked = gr.Textbox(visible=False)
             with gr.Accordion(t("✅ Confirmed images and the effect of your review"), open=False):
                 gr.Markdown(t("Confirm clear images from different angles and in different outfits. Images marked ❓ "
                               "come first under “All”."))
@@ -1950,17 +2092,19 @@ def build_page(demo, gpu):
                            [project, char, version_pick], [version_log, version_pick, undo_st], version_log) \
         .success(L(change_char), [project, char], [r_filter, move_to, *rv_out])
     r_filter.change(L(load_review), [project, char, r_filter], rv_out)
-    r_gal.select(L(select_image), [project, char, files_st], rv_out)
-    prev_btn.click(L(step(-1)), [project, char, files_st, idx_st], rv_out)
-    next_btn.click(L(step(+1)), [project, char, files_st, idx_st], rv_out)
+    r_gal.select(L(select_image), [project, char, files_st], rv_out, show_progress="hidden")
+    prev_btn.click(L(step(-1)), [project, char, files_st, idx_st], rv_out, show_progress="hidden")
+    next_btn.click(L(step(+1)), [project, char, files_st, idx_st], rv_out, show_progress="hidden")
     trash_in = [project, char, r_filter, files_st, idx_st, undo_st]
-    del_btn.click(L(delete_image), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
-    rejected = reject_btn.click(L(reject_image), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
+    del_btn.click(L(delete_image), [*trash_in, r_picked], [*rv_out, undo_st, r_filter], concurrency_id="review",
+                  js=TAKE_PICKED)
+    rejected = reject_btn.click(L(reject_image), [*trash_in, r_picked], [*rv_out, undo_st, r_filter],
+                                concurrency_id="review", js=TAKE_PICKED)
     undone = undo_btn.click(L(undo_delete), trash_in, [*rv_out, undo_st, r_filter], concurrency_id="review")
     forgotten = forget_btn.click(L(forget_rejected), [project, char, r_filter, files_st, idx_st], [*rv_out, r_filter],
                                  concurrency_id="review")
-    confirmed = confirm_btn.click(L(confirm_image), [project, char, r_filter, files_st, idx_st],
-                                  [*rv_out, r_filter], concurrency_id="review")
+    confirmed = confirm_btn.click(L(confirm_image), [project, char, r_filter, files_st, idx_st, r_picked],
+                                  [*rv_out, r_filter], concurrency_id="review", js=TAKE_PICKED)
     unconfirmed = unconfirm_btn.click(L(unconfirm_image), [project, char, r_filter, files_st, idx_st, confirmed_pick],
                                       [*rv_out, r_filter], concurrency_id="review")
     confirmed_out = [confirmed_pick, confirmed_thumb]
@@ -1976,8 +2120,8 @@ def build_page(demo, gpu):
     confirmed_pick.change(L(confirmed_image), [project, char, confirmed_pick], confirmed_thumb)
     long_action(impact_btn, stop_impact, busy_impact, do_feedback_preview, [project, char],
                 [impact_summary, impact_table, impact_gal, impact_state])
-    move_btn.click(L(move_image), [project, char, r_filter, files_st, idx_st, move_to], rv_out,
-                   concurrency_id="review")
+    move_btn.click(L(move_image), [project, char, r_filter, files_st, idx_st, move_to, r_picked], rv_out,
+                   concurrency_id="review", js=TAKE_PICKED)
     save_btn.click(L(save_caption), [project, char, files_st, idx_st, r_caption], None, concurrency_id="review")
 
     t_out = [t_table, t_status, t_selected]
@@ -2040,9 +2184,10 @@ def build_page(demo, gpu):
         _session_langs[_session()] = lang()
         names = projects()
         p = p if p in names else (names[0] if names else p)
-        return (page_language(lang()), gr.update(choices=names, value=p), *load_project(p))
+        return (page_language(lang()), title_md(gpu), gr.update(choices=names, value=p), *load_project(p))
 
-    demo.load(L(init_page), project, [lang_box, project, *proj_outputs]).then(None, lang_box, None, js=set_direction)
+    demo.load(L(init_page), project, [lang_box, title, project, *proj_outputs]).then(None, lang_box, None,
+                                                                                    js=set_direction)
 
     def switch_language(pname, char, files, idx, query, goal, parent, version, preview, impact, upscale_on, model,
                         upscale_version, trigger):
@@ -2095,7 +2240,9 @@ def build_page(demo, gpu):
 def launch(port=7860, open_browser=True):
     import webbrowser
     from .common import setup_runtime
+    from .updates import start as check_for_updates
     setup_runtime()
+    check_for_updates()
     PROJECTS_DIR.mkdir(exist_ok=True)
     language = saved_lang()
     demo = build_ui(language)

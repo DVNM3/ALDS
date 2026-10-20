@@ -88,6 +88,60 @@ class GuiTests(ProjectTest):
         self.assertEqual(positives.load(char)[0], [])
         self.assertEqual(len(gui.list_files(self.p.name, "hero", "_uncertain")), 1)
 
+    def test_picked_images_are_removed_and_restored_together(self):
+        char = self.write_build(stems=("a", "b", "c"))
+        for file in (char / "sorted").rglob("*.png"):
+            Image.new("RGB", (64, 64), (100, 90, 120)).save(file)
+        files = gui.list_files(self.p.name, "hero", "all")
+        with use("en"):
+            out = gui.delete_image(self.p.name, "hero", "all", files, 0, [], '["a", "c"]')
+            self.assertEqual([Path(f).stem for f in out[4]], ["b"])
+            self.assertEqual(len(out[7]), 1)
+            gui.undo_delete(self.p.name, "hero", "all", out[4], out[5], out[7])
+        self.assertEqual(sorted(p.stem for p in (char / "sorted").rglob("*.png")), ["a", "b", "c"])
+        self.assertEqual(list((char / "_deleted").rglob("*.png")), [])
+
+    def test_without_picked_images_the_shown_one_is_used(self):
+        self.write_build(stems=("a", "b"))
+        files = gui.list_files(self.p.name, "hero", "all")
+        for picked in ("", "not json", '["gone"]'):
+            files = gui.list_files(self.p.name, "hero", "all")
+            self.assertEqual(gui.picked_files(files, 1, picked), [files[1]])
+
+    def test_a_failed_batch_removal_puts_back_what_it_moved(self):
+        char = self.write_build(stems=("a", "b"))
+        files = gui.list_files(self.p.name, "hero", "all")
+        real = negatives.trash
+        calls = []
+
+        def trash(char_dir, png):
+            calls.append(png)
+            if len(calls) == 2:
+                raise OSError("locked file")
+            return real(char_dir, png)
+        with patch.object(negatives, "trash", side_effect=trash), self.assertRaises(OSError):
+            gui.delete_image(self.p.name, "hero", "all", files, 0, [], '["a", "b"]')
+        self.assertEqual(sorted(p.stem for p in (char / "sorted").rglob("*.png")), ["a", "b"])
+
+    def test_picked_images_are_rejected_together_and_undone_with_one_step(self):
+        char, files = self.feedback_fixture()
+        with use("en"):
+            out = gui.reject_image(self.p.name, "hero", "all", files, 0, [], '["a", "b"]')
+            self.assertEqual(sorted(negatives.load(char)[0]), ["a", "b"])
+            self.assertEqual(out[4], [])
+            gui.undo_delete(self.p.name, "hero", "all", out[4], out[5], out[7])
+        self.assertEqual(negatives.load(char)[0], [])
+        self.assertEqual(sorted(p.stem for p in (char / "sorted").rglob("*.png")), ["a", "b"])
+
+    def test_picked_images_are_confirmed_and_moved_together(self):
+        char, files = self.feedback_fixture()
+        with use("en"):
+            gui.confirm_image(self.p.name, "hero", "all", files, 0, '["a", "b"]')
+            self.assertEqual(sorted(positives.load(char)[0]), ["a", "b"])
+            files = gui.list_files(self.p.name, "hero", "all")
+            gui.move_image(self.p.name, "hero", "all", files, 0, "close_up/side", '["a", "b"]')
+        self.assertEqual(sorted(p.stem for p in (char / "sorted" / "close_up" / "side").glob("*.png")), ["a", "b"])
+
     def test_rejection_move_failure_restores_label_and_images(self):
         char, files = self.feedback_fixture()
         positives.confirm(char, files[0])

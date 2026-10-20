@@ -607,8 +607,6 @@ AR = {
         "{n} من صورك تساعد في إيجاد الشخصية",
     "× removes one. You can also paste a path and press Enter.":
         "علامة × تحذف حلقة. ويمكنك أيضًا لصق مسار ثم ضغط Enter.",
-    "❓ unsure who it is and ⚠ to check come first. **✅** confirms a clear image, and the program learns from it · **🚫 N** removes another character and learns to leave it out · **🗑 Delete** removes a bad image · **← →** next and previous · **Ctrl+Z** undoes a removal":
-        "الصور ❓ (هوية غير مؤكدة) و⚠ (للمراجعة) تظهر أولًا. **✅** يؤكد صورة واضحة فيتعلم منها البرنامج · **🚫 N** يحذف شخصية أخرى ويتعلم استبعاد ما يشبهها · **🗑 Delete** يحذف صورة سيئة · **← →** التالية والسابقة · **Ctrl+Z** للتراجع عن الحذف",
     "📁 Choose":
         "📁 اختر",
     "📁 Choose a folder of episodes":
@@ -625,4 +623,20 @@ AR = {
         "استعد إطارات المشروع قبل إعادة البناء: التبويب ٥، «🧰 صيانة المشروع».",
     "Copies of dropped episodes":
         "نسخ الحلقات المسحوبة",
+    "Confirmed {n} images. Preview the effect before you build again.":
+        "تم تأكيد {n} صورة. عاين الأثر قبل أن تعيد البناء.",
+    "Download it":
+        "حمّله من هنا",
+    "Looking for text on screen":
+        "البحث عن الكتابة على الصورة",
+    "Rejected {k} images as another character. {n} remaining images look like them: pick “🚫 Like what you rejected” under “Show”.":
+        "رُفضت {k} صورة كشخصية أخرى. {n} صورة باقية تشبهها: اخترها من «🚫 تشبه ما رفضته» في قائمة العرض.",
+    "Rejected {k} images as another character; every later build leaves out what looks like them.":
+        "رُفضت {k} صورة كشخصية أخرى، وسيستبعد البرنامج ما يشبهها في كل بناء قادم.",
+    "Removed {n} images. Ctrl+Z puts them all back.":
+        "حُذفت {n} صورة. Ctrl+Z يعيدها كلها.",
+    "❓ unsure who it is and ⚠ to check come first. **✅** confirms a clear image, and the program learns from it · **🚫 N** removes another character and learns to leave it out · **🗑 Delete** removes a bad image · **← →** next and previous · **Ctrl+Z** undoes a removal · **Ctrl or Shift + click** picks several images, **Ctrl+A** all of them, and the buttons act on every picked image":
+        "الصور ❓ (هوية غير مؤكدة) و⚠ (للمراجعة) تظهر أولًا. **✅** يؤكد صورة واضحة فيتعلم منها البرنامج · **🚫 N** يحذف شخصية أخرى ويتعلم استبعاد ما يشبهها · **🗑 Delete** يحذف صورة سيئة · **← →** التالية والسابقة · **Ctrl+Z** للتراجع عن الحذف · **Ctrl أو Shift + نقرة** لتحديد عدة صور، و**Ctrl+A** لتحديدها كلها، والأزرار تعمل على كل الصور المحددة",
+    "🆕 Version {version} is out.":
+        "🆕 صدر الإصدار {version}.",
 }
