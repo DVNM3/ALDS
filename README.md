@@ -80,14 +80,22 @@ Pictures taken from the episodes are blurred here; in the program they show as t
    ```bat
    git clone https://github.com/DVNM3/ALDS.git
    ```
-2. In the program folder, create the Python environment and install the requirements:
-   ```bat
-   py -3.12 -m venv .venv
-   .venv\Scripts\python.exe -m pip install -r requirements.txt
-   ```
+2. Double-click **`setup.bat`**. It checks for Python 3.12, creates the Python environment in `.venv`, installs the requirements (about 2 GB the first time) and then checks the setup: packages, graphics card, CUDA, video decoding and free disk space. If it stops, read the message and double-click it again; it continues where it stopped.
 3. Double-click **`alds-gui.bat`**. The models download from Hugging Face by themselves on the first run.
 
-**Updating:** run `git pull` in the program folder, or replace the `alds` folder with the one from the new ZIP. Your `projects` folder, `settings.json` and `.venv` stay as they are. If `requirements.txt` changed, run the `pip install` line again.
+To try every step on one episode before real work, run `alds.bat selftest "D:\anime\episode.mkv"` (see [Self-test](#self-test)).
+
+<details><summary>Without setup.bat</summary>
+
+```bat
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+</details>
+
+**Updating:** run `git pull` in the program folder, or replace the `alds` folder with the one from the new ZIP. Your `projects` folder, `settings.json` and `.venv` stay as they are. Then double-click `setup.bat` again, in case the requirements changed.
+
+**New versions:** when the interface starts, it asks GitHub once whether a newer release exists, and shows a link under the title if there is one. Nothing else is sent. To turn it off, add `"check_updates": false` to `settings.json`.
 
 ## Using the interface
 Double-click **`alds-gui.bat`**. The interface opens in your browser at `http://127.0.0.1:7860` and only runs on your computer. To stop it, close the black command window.
@@ -114,6 +122,9 @@ Review keys:
 | **Delete** | Bad image of the character itself. It's only removed. |
 | **← →** | Previous and next image. |
 | **Ctrl+Z** | Undo the last removal. |
+| **Ctrl + click**, **Shift + click** | Pick several images (Shift picks a range). ✅, 🚫, 🗑 and ↪ Move then act on all of them, and **Ctrl+Z** undoes the whole batch. |
+| **Ctrl+A** | Pick every image shown, for example every image under “🚫 Like what you rejected”. |
+| **Esc** | Clear the picked images. |
 
 - **Progress:** every long action shows a progress bar under its button and writes each step to its log box as it goes, in the interface language.
 - **Stop button:** every long action shows one while it runs. The action stops within seconds and the project is back exactly as it was, so starting again begins from the start. The same happens when an action fails, and with **Ctrl+C** on the command line.
@@ -182,6 +193,8 @@ scan  →  pick the character's number  →  build  →  review  →  export
 | `upscalers` | List the upscaling models; `--download NAME` or `--delete NAME` to free space. |
 | `versions` | List, save, compare, restore or delete a character's saved versions. |
 | `gui` | Open the interface. |
+| `check` | Check the installation: Python, packages, graphics card, CUDA, video decoding, disk space. |
+| `selftest` | Run every step on one episode in a temporary folder, and report what works. |
 
 `alds.bat <command> --help` lists every option of a command.
 
@@ -215,6 +228,12 @@ alds.bat versions -p fairytail -n natsu_ft --delete VERSION_ID
 Take the ID from the list. Every rebuild saves the current result first, and so does restoring, so you can always go back. A version holds the images, captions, confirmations, rejections, your own images and reference images.
 
 When you rebuild, your review carries over to the images from the same episode and time: edited captions, group moves and removed images. Bulk tag edits are applied to the new images too, tags in the trigger word box stay out of the captions, and outfit tags follow the new outfit split. If the rebuild fails or is stopped, the previous result comes back.
+
+### Self-test
+```bat
+alds.bat selftest "D:\anime\episode.mkv"
+```
+Runs the whole program on one episode in a temporary folder, then deletes it; your projects aren't touched. It checks the setup, then scans the episode (a 2.5-minute part of a long episode), builds the character found most often together with one image of your own, checks every caption, confirms, rejects and deletes images and undoes each, moves a tag into the trigger word and back, saves a version and the dataset, and tries the upscaler if a model is downloaded. Each step is marked `[ok]` or `[failed]`, with how long it took. Without an episode it uses the shortest one you scanned before. `--keep` keeps the test folder.
 
 ### review
 In the interface, or by hand: open the `sorted` folder and delete every image that isn't the character, starting with `_review`. The `.txt` captions can be edited too.

@@ -323,18 +323,16 @@ footer nav { margin: 0; flex-wrap: wrap; }
 <pre><code>git clone https://github.com/DVNM3/ALDS.git</code></pre>
           </li>
           <li>
-            <span class="en">In the program folder, create the Python environment and install the requirements:</span>
-            <span class="ar">داخل مجلد البرنامج، أنشئ بيئة Python وثبّت المتطلبات:</span>
-<pre><code>py -3.12 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt</code></pre>
+            <span class="en">Double-click <code>setup.bat</code>. It checks for Python 3.12, creates the Python environment, installs the requirements (about 2 GB the first time) and checks the graphics card and the rest of the setup. If it stops, double-click it again.</span>
+            <span class="ar">افتح <code>setup.bat</code> بنقرة مزدوجة. يتأكد من وجود Python 3.12، وينشئ بيئة Python، ويثبّت المتطلبات (نحو 2 GB في المرة الأولى)، ثم يفحص كرت الشاشة وبقية الإعداد. وإن توقف فافتحه مرة أخرى.</span>
           </li>
           <li>
             <span class="en">Double-click <code>alds-gui.bat</code>. The models download from Hugging Face by themselves on the first run.</span>
             <span class="ar">افتح <code>alds-gui.bat</code> بنقرة مزدوجة. تُحمَّل النماذج من Hugging Face تلقائيًا في أول تشغيل.</span>
           </li>
         </ol>
-        <p class="note en"><b>Updating:</b> run <code>git pull</code> in the program folder, or replace the <code>alds</code> folder with the one from the new ZIP. Your <code>projects</code> folder, <code>settings.json</code> and <code>.venv</code> stay as they are. If <code>requirements.txt</code> changed, run the <code>pip install</code> line again.</p>
-        <p class="note ar"><b>التحديث:</b> نفّذ <code>git pull</code> في مجلد البرنامج، أو استبدل مجلد <code>alds</code> بالجديد من ملف ZIP. مجلد <code>projects</code> و <code>settings.json</code> و <code>.venv</code> تبقى كما هي. وإن تغيّر <code>requirements.txt</code> فأعد تنفيذ سطر <code>pip install</code>.</p>
+        <p class="note en"><b>Updating:</b> run <code>git pull</code> in the program folder, or replace the <code>alds</code> folder with the one from the new ZIP. Your <code>projects</code> folder, <code>settings.json</code> and <code>.venv</code> stay as they are. Then double-click <code>setup.bat</code> again, in case the requirements changed. The interface shows a link under its title when a newer release is out.</p>
+        <p class="note ar"><b>التحديث:</b> نفّذ <code>git pull</code> في مجلد البرنامج، أو استبدل مجلد <code>alds</code> بالجديد من ملف ZIP. مجلد <code>projects</code> و <code>settings.json</code> و <code>.venv</code> تبقى كما هي. ثم افتح <code>setup.bat</code> مرة أخرى تحسّبًا لتغيّر المتطلبات. وتعرض الواجهة رابطًا تحت عنوانها حين يصدر إصدار أحدث.</p>
       </div>
     </div>
   </section>
@@ -384,6 +382,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
               <tr><td><kbd>Delete</kbd></td><td class="desc">Bad image of the character itself. It's only removed.</td></tr>
               <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td class="desc">Previous and next image.</td></tr>
               <tr><td><kbd>Ctrl+Z</kbd></td><td class="desc">Undo the last removal.</td></tr>
+              <tr><td><kbd>Ctrl</kbd>/<kbd>Shift</kbd> + click</td><td class="desc">Pick several images; the buttons then act on all of them, and Ctrl+Z undoes the whole batch.</td></tr>
+              <tr><td><kbd>Ctrl+A</kbd> · <kbd>Esc</kbd></td><td class="desc">Pick every image shown · clear the picked images.</td></tr>
             </table>
             <table class="ar">
               <tr><th>المفتاح</th><th>العمل</th></tr>
@@ -391,6 +391,8 @@ footer nav { margin: 0; flex-wrap: wrap; }
               <tr><td><kbd>Delete</kbd></td><td class="desc">صورة سيئة للشخصية نفسها، تُزال فقط.</td></tr>
               <tr><td><kbd>→</kbd> <kbd>←</kbd></td><td class="desc">الصورة السابقة والتالية.</td></tr>
               <tr><td><kbd>Ctrl+Z</kbd></td><td class="desc">التراجع عن آخر إزالة.</td></tr>
+              <tr><td><kbd>Ctrl</kbd>/<kbd>Shift</kbd> + نقرة</td><td class="desc">تحديد عدة صور، فتعمل الأزرار عليها كلها، ويتراجع Ctrl+Z عن الدفعة كاملة.</td></tr>
+              <tr><td><kbd>Ctrl+A</kbd> · <kbd>Esc</kbd></td><td class="desc">تحديد كل الصور المعروضة · إلغاء التحديد.</td></tr>
             </table>
           </div>
         </div>
