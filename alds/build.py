@@ -199,18 +199,22 @@ def has_text(words):
     return any(score >= TEXT_MIN_CONF and len(re.sub(r"[\W_]", "", txt)) >= 3 for txt, score in words)
 
 
-def dedup(items, sim):
+def dedup(items, sim, accept=None, progress=None):
     if not items:
-        return []
+        return [], []
     E = np.stack([it["emb"] for it in items])
     E /= np.linalg.norm(E, axis=1, keepdims=True)
     quality = np.array([np.log1p(it["sharp"]) + 0.5 * np.log(box_area(it["box"])) for it in items])
-    kept = []
-    for i in np.argsort(-quality):
+    kept, refused = [], []
+    for i in (progress or (lambda order: order))(np.argsort(-quality)):
+        check_cancel()
         if kept and float((E[kept] @ E[i]).max()) >= sim:
             continue
+        if accept is not None and not accept(items[i]):
+            refused.append(items[i])
+            continue
         kept.append(int(i))
-    return [items[i] for i in kept]
+    return [items[i] for i in kept], refused
 
 
 def check_overwrite(project, name, overwrite):
@@ -357,9 +361,6 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
             if contrast < MIN_CONTRAST:
                 drop("dark or faded", frame, fr)
                 continue
-            if not keep_text and has_text(cache.get(rec, "ocr", lambda: read_text(frame(), ocr))):
-                drop("text on screen", frame, fr)
-                continue
             rating, general, emb = cache.get(rec.setdefault("tags", {}), tagger, lambda: wd14(frame()))
             if people_count(general) > 1:
                 drop("another character in the scene", frame, fr)
@@ -375,10 +376,20 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
                 portrait = cache.get(rec, "portrait", lambda: anime_portrait(frame().crop(det["box"]))[0])
             items.append({"frame": fi, "det": det["id"], "type": "scene", "box": det["box"], "score": round(score, 4),
                           "how": how, "sharp": sharp, "rating": rating, "general": general, "emb": emb,
-                          "portrait": portrait, "head": det["head"]})
+                          "portrait": portrait, "head": det["head"], "rec": rec})
         n_scenes = len(items) + sum(dropped.values())
-        keep = dedup(items, sim)
-        dropped["near-duplicate"] = len(items) - len(keep)
+
+        def no_text(it):
+            fr = frames[it["frame"]]
+            frame = functools.cache(lambda: Image.open(project.path(fr["file"])).convert("RGB"))
+            if has_text(cache.get(it["rec"], "ocr", lambda: read_text(frame(), ocr))):
+                drop("text on screen", frame, fr)
+                return False
+            return True
+
+        keep, refused = dedup(items, sim, None if keep_text else no_text,
+                              lambda order: tqdm(order, desc=t("Looking for text on screen"), unit=t("scenes")))
+        dropped["near-duplicate"] = len(items) - len(keep) - len(refused)
         if use_episodes:
             say("  • " + t("{kept} of {n} scenes kept. Only scenes with the character alone and at least {share} of "
                            "the frame height are used.", kept=len(keep), n=n_scenes, share=f"{min_height:.0%}"))
@@ -403,7 +414,10 @@ def run_build(project, name, cluster_ids, ref_dir, threshold, relax, min_height,
 
         if preview_limit:
             accepted = {it["frame"] for it in keep}
+            left_out = {it["frame"] for it in refused}
             for it in items:
+                if it["frame"] in left_out:
+                    continue
                 check_cancel()
                 fr = frames[it["frame"]]
                 with Image.open(project.path(fr["file"])) as image:

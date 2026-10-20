@@ -212,6 +212,34 @@ class PreviewTests(ProjectTest):
                 raise cancel.Cancelled()
         self.assertEqual(sorted(f.name for f in own.iterdir()), ["a.png"])
 
+    def test_text_is_only_looked_for_in_scenes_that_survive_duplicates(self):
+        read = []
+
+        def read_text(img, ocr):
+            read.append(img.size)
+            return []
+        with patch.object(build, "read_text", side_effect=read_text), patch("alds.outfits.run_outfits", return_value=[]):
+            with txn.build_txn(self.p, "hero"):
+                build.run_build(self.p, "hero", [1], None, 0.25, 1.0, 0.5, 0.8, None, True, "EVA02_Large",
+                                False, False, False, True)
+        self.assertEqual(len(self.p.load("characters/hero/build.json")["items"]), 1)
+        self.assertEqual(len(read), 1)
+        report = (self.char / "report.txt").read_text(encoding="utf-8")
+        self.assertIn("near-duplicate: 1", report)
+
+    def test_a_scene_with_text_gives_way_to_its_duplicate(self):
+        answers = iter([[("EPISODE TITLE", 0.99)]])
+
+        def read_text(img, ocr):
+            return next(answers, [])
+        with patch.object(build, "read_text", side_effect=read_text), patch("alds.outfits.run_outfits", return_value=[]):
+            with txn.build_txn(self.p, "hero"):
+                build.run_build(self.p, "hero", [1], None, 0.25, 1.0, 0.5, 0.8, None, True, "EVA02_Large",
+                                False, False, False, True)
+        self.assertEqual(len(self.p.load("characters/hero/build.json")["items"]), 1)
+        report = (self.char / "report.txt").read_text(encoding="utf-8")
+        self.assertIn("text on screen: 1", report)
+
     def test_failed_preview_restores_previous_preview_and_current_result(self):
         self.preview()
         before, before_current = self.files(self.out), self.files(self.char)
