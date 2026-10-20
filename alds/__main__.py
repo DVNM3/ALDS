@@ -153,12 +153,25 @@ def main(argv=None):
     p.add_argument("--port", type=int, default=7860)
     p.add_argument("--no-browser", action="store_true", help="don't open the browser automatically")
 
+    sub.add_parser("check", help="check the installation: Python, packages, graphics card, disk space")
+
+    p = sub.add_parser("selftest", help="run every step on one episode in a temporary folder and report what works")
+    p.add_argument("video", nargs="?", help="episode to test with (default: the shortest episode you scanned before)")
+    p.add_argument("--keep", action="store_true", help="keep the temporary test folder")
+
     a = ap.parse_args(argv)
     if a.cmd == "gui":
         from .gui import launch
         return launch(a.port, not a.no_browser)
     if a.cmd == "upscalers":
         return run_upscalers(a)
+    if a.cmd == "check":
+        from .selftest import run_check
+        return run_check()
+    if a.cmd == "selftest":
+        from .selftest import run_selftest
+        setup_runtime()
+        return run_selftest(a.video, a.keep)
     project = Project(a.project)
     if a.cmd not in ("export", "tags", "outfits", "clean", "restore-frames", "versions", "confirm"):
         setup_runtime()

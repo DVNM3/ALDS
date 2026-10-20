@@ -24,7 +24,8 @@ def frame_time(frame, n, fps):
 
 
 def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
-                   min_gap=0.35, keep_diff=5.0, cut_diff=30.0, settle=2, flat_std=6.0, keep=save_frame):
+                   min_gap=0.35, keep_diff=5.0, cut_diff=30.0, settle=2, flat_std=6.0, keep=save_frame,
+                   start=0.0, until=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     frames = []
     with av.open(str(video_path)) as container:
@@ -38,10 +39,16 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
         prev = last_kept = None
         last_kept_t, last_kept_shot = -1e9, -1
         shot, since_cut = 0, 0
+        if start:
+            container.seek(int(start / stream.time_base), stream=stream)
         for n, frame in enumerate(tqdm(container.decode(stream), total=total, unit=t("frames"),
                                        desc=t("Reading the episode"), leave=False)):
             check_cancel()
             at = frame_time(frame, n, fps)
+            if until is not None and at >= until:
+                break
+            if at < start:
+                continue
             thumb = frame.reformat(width=64, height=36, format="gray").to_ndarray().astype(np.float32)
             fp.add(at, thumb)
             if any(a <= at < b for a, b in skip):

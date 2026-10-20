@@ -46,6 +46,7 @@ def setup_runtime():
     hf_logging.set_verbosity_error()
 
     import onnxruntime as ort
+    ort.set_default_logger_severity(3)
     try:
         ort.preload_dlls()
     except Exception:

@@ -159,7 +159,7 @@ def load_state(project):
     return frames, dets, F
 
 
-def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, auto_min=40.0):
+def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, auto_min=40.0, window=(0.0, None)):
     project.require_frames()
     proj = project.load("project.json", {"videos": []})
     frames, dets, F = load_state(project)
@@ -175,7 +175,7 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
         try:
             fr, info, fp = extract_frames(vp, project.frames_dir / f"v{vid:02d}", f"frames/v{vid:02d}",
                                           skip=skip_ranges, min_gap=min_gap, keep_diff=keep_diff,
-                                          keep=detector.add)
+                                          keep=detector.add, start=window[0], until=window[1])
             print("  • " + t("{n} frames taken from {shots} shots ({minutes} min)", n=len(fr), shots=info["shots"],
                              minutes=f"{info['duration'] / 60:.1f}"))
             new_dets, newF = detector.finish()
