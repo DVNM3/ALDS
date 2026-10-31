@@ -1,15 +1,17 @@
 import queue
+import shutil
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 
+import av
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from tqdm import tqdm
 
 from .cache import file_hash
 from .cancel import check as check_cancel
-from .common import VIDEO_EXTS, box_area, frame_in_use, inside_ratio
+from .common import VIDEO_EXTS, box_area, frame_in_use, inside_ratio, mmss
 from .extract import extract_frames, save_frame
 from .i18n import t
 from .identity import ccip_features, ccip_matrix
@@ -165,6 +167,7 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
     frames, dets, F = load_state(project)
 
     videos = expand_video_args(videos)
+    unreadable, added = [], 0
     for i, vp in enumerate(videos, 1):
         if any(v["path"] == str(vp) for v in proj["videos"]):
             print(t("Episode {i} of {n}: {name} is already scanned, skipped", i=i, n=len(videos), name=vp.name))
@@ -179,9 +182,19 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
             print("  • " + t("{n} frames taken from {shots} shots ({minutes} min)", n=len(fr), shots=info["shots"],
                              minutes=f"{info['duration'] / 60:.1f}"))
             new_dets, newF = detector.finish()
+        except av.FFmpegError:
+            detector.abort()
+            shutil.rmtree(project.frames_dir / f"v{vid:02d}", ignore_errors=True)
+            print("  • " + t("⚠ {name} couldn't be read, so it was skipped: the file may be damaged, or not a video.",
+                             name=vp.name))
+            unreadable.append(vp.name)
+            continue
         except BaseException:
             detector.abort()
             raise
+        if window[1] is None and info["duration"] and info["end"] < info["duration"] * 0.9:
+            print("  • " + t("⚠ {name} ends at {end} but should last {length}: the file may be incomplete.",
+                             name=vp.name, end=mmss(info["end"]), length=mmss(info["duration"])))
         project.scan_dir.mkdir(parents=True, exist_ok=True)
         np.save(project.path(f"scan/fp_v{vid:02d}.npy"), fp)
         for f in fr:
@@ -204,7 +217,10 @@ def run_scan(project, videos, skip_ranges, min_gap, keep_diff, auto_skip=True, a
         project.save("scan/detections.json", dets)
         np.save(project.path("scan/ccip.npy"), F)
         project.save("project.json", proj)
+        added += 1
 
+    if unreadable and not added:
+        raise SystemExit("none of the episodes could be read: " + ", ".join(unreadable))
     if not dets:
         raise SystemExit("no characters detected")
     if auto_skip:

@@ -38,7 +38,7 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
         fp = Fingerprinter()
         prev = last_kept = None
         last_kept_t, last_kept_shot = -1e9, -1
-        shot, since_cut = 0, 0
+        shot, since_cut, at = 0, 0, 0.0
         if start:
             container.seek(int(start / stream.time_base), stream=stream)
         for n, frame in enumerate(tqdm(container.decode(stream), total=total, unit=t("frames"),
@@ -71,4 +71,5 @@ def extract_frames(video_path: Path, out_dir: Path, rel_prefix: str, skip=(),
             frames.append({"n": n, "t": round(at, 3), "shot": shot, "file": f"{rel_prefix}/{name}"})
             last_kept, last_kept_t, last_kept_shot = thumb, at, shot
     info["shots"] = shot
+    info["end"] = round(at, 1)
     return frames, info, fp.result()
