@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -102,6 +103,7 @@ def model_view(upscale_on, model, version="auto"):
 
 def delete_model(model, version="auto"):
     from .upscale import delete, megabytes
+    require_idle()
     if not model:
         raise gr.Error(t("Pick a model"))
     freed = delete(model)
@@ -391,45 +393,110 @@ def route_output():
         sys.stdout = RoutedOutput(sys.stdout)
 
 
+JOB_NAMES = {"do_scan": "The scan", "do_autoskip": "Finding the OP/ED", "do_recluster": "Re-clustering",
+             "do_split": "Splitting the cluster", "do_restore_frames": "Restoring the frames",
+             "do_preview": "The settings preview", "do_build": "The build", "do_version": "Saving the version",
+             "do_restore_version": "Restoring the version", "do_feedback_preview": "The effect preview",
+             "do_save": "Saving the images"}
+_jobs = {}
+_jobs_lock = threading.Lock()
+
+
+class Job:
+    def __init__(self, name):
+        self.name, self.log, self.done = name, LogBuffer(), {}
+        self.started = time.monotonic()
+        self.thread = None
+
+
+def running_job():
+    job = _jobs.get("current")
+    return job if job is not None and job.thread.is_alive() else None
+
+
+def still_running(job):
+    return gr.Error(t("{name} is still running. Wait for it to finish, or stop it.", name=t(job.name)))
+
+
+def require_idle():
+    job = running_job()
+    if job is not None:
+        raise still_running(job)
+
+
+def start_job(fn, args, kwargs, context):
+    with _jobs_lock:
+        require_idle()
+        cancel.reset()
+        job = Job(JOB_NAMES.get(fn.__name__, "The action"))
+
+        def work():
+            _log_to.set(job.log)
+            try:
+                job.done["value"] = fn(*args, **kwargs)
+            except BaseException as e:
+                job.done["error"] = e
+            finally:
+                release_models()
+
+        job.thread = threading.Thread(target=context.run, args=(work,), daemon=True)
+        _jobs["current"] = job
+        job.thread.start()
+    return job
+
+
+def stop_running_job(wait=120):
+    job = running_job()
+    if job is not None:
+        cancel.request()
+        job.thread.join(wait)
+
+
 def streamed(fn, log_at, n_outputs):
     def partial(text):
         return text if n_outputs == 1 else tuple(text if i == log_at else gr.skip() for i in range(n_outputs))
 
     @functools.wraps(fn)
     def run(*args, **kwargs):
+        route_output()
         with use(session_lang()):
             context = contextvars.copy_context()
-        log, done = LogBuffer(), {}
-
-        def work():
-            _log_to.set(log)
-            try:
-                done["value"] = fn(*args, **kwargs)
-            except BaseException as e:
-                done["error"] = e
-            finally:
-                release_models()
-
-        route_output()
-        worker = threading.Thread(target=context.run, args=(work,), daemon=True)
-        worker.start()
+            job = start_job(fn, args, kwargs, context)
         shown = ""
-        try:
-            while worker.is_alive():
-                worker.join(0.3)
-                if log_at is not None and log.getvalue() != shown:
-                    shown = log.getvalue()
-                    yield partial(shown)
-        finally:
-            if worker.is_alive():
-                cancel.request()
-                worker.join()
-        if "error" in done:
-            if log_at is not None and log.getvalue() != shown:
-                yield partial(log.getvalue())
-            raise done["error"]
-        yield done["value"]
+        while job.thread.is_alive():
+            job.thread.join(0.3)
+            if log_at is not None and job.log.getvalue() != shown:
+                shown = job.log.getvalue()
+                yield partial(shown)
+        if "error" in job.done:
+            if log_at is not None and job.log.getvalue() != shown:
+                yield partial(job.log.getvalue())
+            raise job.done["error"]
+        yield job.done["value"]
     return run
+
+
+def watch_job():
+    language = session_lang()
+    job = running_job()
+    if job is None:
+        yield gr.update(visible=False), gr.skip(), gr.skip(), gr.skip(), False
+        return
+    shown = None
+    while job.thread.is_alive():
+        with use(language):
+            info = t("⏳ {name} has been running for {time}. It keeps running if you close or reload this page.",
+                     name=t(job.name), time=mmss(time.monotonic() - job.started))
+        if (info, job.log.getvalue()) != shown:
+            shown = (info, job.log.getvalue())
+            yield gr.update(visible=True), info, job.log.getvalue(), gr.skip(), True
+        job.thread.join(1.0)
+    with use(language):
+        error = job.done.get("error")
+        info = (t("❌ {name} stopped: {error}", name=t(job.name),
+                  error=str(getattr(error, "message", error)).strip()) if error
+                else t("✅ {name} finished.", name=t(job.name)))
+    yield gr.update(visible=True), info, job.log.getvalue(), gr.update(visible=False), True
 
 
 def translated(text):
@@ -461,7 +528,10 @@ def characters(pname):
     return sorted(p.name for p in d.iterdir() if (p / "sorted").exists()) if d.exists() else []
 
 
-ERROR_HINTS = [("not found:", "The file or folder doesn't exist"),
+ERROR_HINTS = [("original episode not found", "The original episode isn't where it was. Choose the folder it's in now "
+                                              "under “Episodes folder if moved”, then restore again."),
+               ("not found:", "The file or folder doesn't exist"),
+               ("could be read", "None of the episodes could be read: the files may be damaged, or not videos."),
                ("no matches", "The character wasn't found. Raise “Match threshold” a little or pick other clusters"),
                ("no characters detected", "No characters were found in the episodes"),
                ("nothing scanned yet", "Scan at least one episode first (tab 1)"),
@@ -541,7 +611,6 @@ def stop_label():
 
 
 def start_ui():
-    cancel.reset()
     return gr.update(visible=True, value=stop_label(), interactive=True), gr.update(visible=True)
 
 
@@ -727,6 +796,7 @@ def usage_md(pname):
 
 def do_clean(pname, all_frames, confirm):
     from .cleanup import clean
+    require_idle()
     p = need_project(pname)
     if all_frames and not confirm:
         raise gr.Error(t("Confirm deleting the frames. The original episodes are needed to restore them."))
@@ -1376,6 +1446,18 @@ def save_caption(pname, char, files, idx, caption):
     gr.Info(t("Caption saved"))
 
 
+def autosave_caption(pname, char, files, idx, caption):
+    if caption is None or not pname or not char or not files or not 0 <= idx < len(files):
+        return
+    png = Path(files[idx])
+    if not png.exists() or is_busy(char_dir_of(pname, char)):
+        return
+    txt = png.with_suffix(".txt")
+    if caption.strip() != (txt.read_text(encoding="utf-8").strip() if txt.exists() else ""):
+        txt.write_text(caption.strip(), encoding="utf-8")
+        gr.Info(t("Caption saved"))
+
+
 def char_dir_of(pname, char):
     return Project(safe_name(pname)).chars_dir / char
 
@@ -1637,6 +1719,7 @@ def delete_hint(pname):
 
 def delete_project(pname, confirm):
     from .cleanup import disk_usage, fmt_bytes
+    require_idle()
     p = need_project(pname)
     if not p.dir.exists():
         raise gr.Error(t("The project doesn't exist"))
@@ -1711,6 +1794,11 @@ def build_page(demo, gpu):
         refresh = gr.Button(t("🔄 Refresh"), scale=1)
         lang_btn = gr.Button(other_language(), scale=1)
         lang_box = gr.Textbox(visible=False)
+    with gr.Column(visible=False, elem_id="job-panel") as job_box:
+        job_info = gr.Markdown()
+        job_log = gr.Textbox(lines=6, label=t("Log"), elem_classes="log", autoscroll=True)
+        job_stop = gr.Button(stop_label(), variant="stop")
+        job_seen = gr.State(False)
 
     with gr.Tabs() as tabs:
         with gr.Tab(t("1. Scan episodes"), id="scan"):
@@ -2123,6 +2211,7 @@ def build_page(demo, gpu):
     move_btn.click(L(move_image), [project, char, r_filter, files_st, idx_st, move_to, r_picked], rv_out,
                    concurrency_id="review", js=TAKE_PICKED)
     save_btn.click(L(save_caption), [project, char, files_st, idx_st, r_caption], None, concurrency_id="review")
+    r_caption.blur(L(autosave_caption), [project, char, files_st, idx_st, r_caption], None, concurrency_id="review")
 
     t_out = [t_table, t_status, t_selected]
     g_out = [t_goal_tags, t_goal_legend, t_box, t_box_note]
@@ -2187,7 +2276,13 @@ def build_page(demo, gpu):
         return (page_language(lang()), title_md(gpu), gr.update(choices=names, value=p), *load_project(p))
 
     demo.load(L(init_page), project, [lang_box, title, project, *proj_outputs]).then(None, lang_box, None,
-                                                                                    js=set_direction)
+                                                                                    js=set_direction) \
+        .then(watch_job, None, [job_box, job_info, job_log, job_stop, job_seen], concurrency_limit=None,
+              show_progress="hidden") \
+        .then(L(lambda p, seen: (gr.update(choices=projects()), *load_project(p)) if seen
+                else tuple(gr.skip() for _ in range(len(proj_outputs) + 1))),
+              [project, job_seen], [project, *proj_outputs])
+    job_stop.click(L(press_stop), None, job_stop, queue=False)
 
     def switch_language(pname, char, files, idx, query, goal, parent, version, preview, impact, upscale_on, model,
                         upscale_version, trigger):
@@ -2240,9 +2335,11 @@ def build_page(demo, gpu):
 def launch(port=7860, open_browser=True):
     import webbrowser
     from .common import setup_runtime
+    import atexit
     from .updates import start as check_for_updates
     setup_runtime()
     check_for_updates()
+    atexit.register(stop_running_job)
     PROJECTS_DIR.mkdir(exist_ok=True)
     language = saved_lang()
     demo = build_ui(language)

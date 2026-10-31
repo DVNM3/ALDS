@@ -128,6 +128,9 @@ Review keys:
 
 - **Progress:** every long action shows a progress bar under its button and writes each step to its log box as it goes, in the interface language.
 - **Stop button:** every long action shows one while it runs. The action stops within seconds and the project is back exactly as it was, so starting again begins from the start. The same happens when an action fails, and with **Ctrl+C** on the command line.
+- **Closing the page:** a scan, build or other long action keeps running if you close or reload the page. When you open the page again, a panel at the top shows its progress and a Stop button, and the views refresh when it ends. Only one long action runs at a time.
+- **Captions save themselves:** an edited caption is saved as soon as you click anywhere else, such as the next image or a button.
+- **Damaged episodes:** an episode that can't be read is skipped with a message naming it, and the other episodes are scanned. An episode that ends well before its stated length gets a warning.
 - Removed images aren't deleted for good: they move to a `_deleted` folder inside the character folder.
 - **🕘 Saved build versions** (Review tab): save, compare, restore or delete a version. Images that didn't change are stored only once.
 - **Preview these settings** (Pick the character): runs the filters on 12 frames spread over the episodes. Upscaling and outfit tags only run in the full build.
@@ -233,7 +236,7 @@ When you rebuild, your review carries over to the images from the same episode a
 ```bat
 alds.bat selftest "D:\anime\episode.mkv"
 ```
-Runs the whole program on one episode in a temporary folder, then deletes it; your projects aren't touched. It checks the setup, then scans the episode (a 2.5-minute part of a long episode), builds the character found most often together with one image of your own, checks every caption, confirms, rejects and deletes images and undoes each, moves a tag into the trigger word and back, saves a version and the dataset, and tries the upscaler if a model is downloaded. Each step is marked `[ok]` or `[failed]`, with how long it took. Without an episode it uses the shortest one you scanned before. `--keep` keeps the test folder.
+Runs the whole program on one episode in a temporary folder, then deletes it; your projects aren't touched. It checks the setup, then scans the episode (a 5-minute part of a long episode), builds the character found most often together with one image of your own, checks every caption, confirms, rejects and deletes images and undoes each, moves a tag into the trigger word and back, saves a version and the dataset, and tries the upscaler if a model is downloaded. Each step is marked `[ok]` or `[failed]`, with how long it took. Without an episode it uses the shortest one you scanned before. `--keep` keeps the test folder.
 
 ### review
 In the interface, or by hand: open the `sorted` folder and delete every image that isn't the character, starting with `_review`. The `.txt` captions can be edited too.

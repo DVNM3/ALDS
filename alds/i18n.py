@@ -639,4 +639,40 @@ AR = {
         "الصور ❓ (هوية غير مؤكدة) و⚠ (للمراجعة) تظهر أولًا. **✅** يؤكد صورة واضحة فيتعلم منها البرنامج · **🚫 N** يحذف شخصية أخرى ويتعلم استبعاد ما يشبهها · **🗑 Delete** يحذف صورة سيئة · **← →** التالية والسابقة · **Ctrl+Z** للتراجع عن الحذف · **Ctrl أو Shift + نقرة** لتحديد عدة صور، و**Ctrl+A** لتحديدها كلها، والأزرار تعمل على كل الصور المحددة",
     "🆕 Version {version} is out.":
         "🆕 صدر الإصدار {version}.",
+    "The scan":
+        "الفحص",
+    "Finding the OP/ED":
+        "البحث عن الشارة",
+    "Re-clustering":
+        "إعادة التجميع",
+    "Splitting the cluster":
+        "تقسيم المجموعة",
+    "The settings preview":
+        "معاينة الإعدادات",
+    "The build":
+        "البناء",
+    "Saving the version":
+        "حفظ النسخة",
+    "Restoring the version":
+        "استعادة النسخة",
+    "The effect preview":
+        "معاينة الأثر",
+    "The action":
+        "العملية",
+    "{name} is still running. Wait for it to finish, or stop it.":
+        "ما زال العمل جاريًا: {name}. انتظر حتى ينتهي، أو أوقفه.",
+    "⏳ {name} has been running for {time}. It keeps running if you close or reload this page.":
+        "⏳ ما زال العمل جاريًا: {name}، منذ {time}. ويستمر حتى لو أغلقت هذه الصفحة أو أعدت تحميلها.",
+    "✅ {name} finished.":
+        "✅ انتهى العمل: {name}.",
+    "❌ {name} stopped: {error}":
+        "❌ توقف العمل ({name}): {error}",
+    "⚠ {name} couldn't be read, so it was skipped: the file may be damaged, or not a video.":
+        "⚠ تعذّرت قراءة {name} فتم تخطيه: قد يكون الملف تالفًا، أو ليس فيديو.",
+    "⚠ {name} ends at {end} but should last {length}: the file may be incomplete.":
+        "⚠ ينتهي {name} عند {end} مع أن طوله {length}: قد يكون الملف ناقصًا.",
+    "None of the episodes could be read: the files may be damaged, or not videos.":
+        "تعذّرت قراءة كل الحلقات: قد تكون الملفات تالفة، أو ليست فيديو.",
+    "The original episode isn't where it was. Choose the folder it's in now under “Episodes folder if moved”, then restore again.":
+        "الحلقة الأصلية لم تعد في مكانها. اختر المجلد الذي توجد فيه الآن في «مجلد الحلقات إن نُقلت»، ثم أعد الاستعادة.",
 }
