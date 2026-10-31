@@ -13,7 +13,7 @@ from . import __version__, common
 PACKAGES = ("dghs-imgutils", "onnxruntime-gpu", "av", "gradio", "scikit-learn")
 MARK = {"ok": "[ok]     ", "warn": "[warning]", "fail": "[failed] "}
 NAME = "selftest"
-WINDOW = 150.0
+WINDOW = 300.0
 MIN_FREE_GB = 10
 
 
@@ -109,13 +109,14 @@ def window_for(video):
         duration = container.duration / av.time_base if container.duration else 0
     if not duration or duration <= WINDOW * 1.5:
         return (0.0, None), duration
-    start = round(duration * 0.35, 1)
+    start = round(duration * 0.3, 1)
     return (start, start + WINDOW), duration
 
 
 class Steps:
     def __init__(self):
         self.rows = []
+        self.failed = False
 
     @contextlib.contextmanager
     def step(self, name):
@@ -133,6 +134,7 @@ class Steps:
                 print("      " + tail.replace("\n", "\n      "))
             print(f"      {type(e).__name__}: {e}")
             self.rows.append((name, seconds, "fail"))
+            self.failed = True
             raise
         seconds = time.perf_counter() - began
         print(f"\r  {MARK['ok']} {name} ({seconds:.0f} s)")
@@ -197,14 +199,14 @@ def pipeline(steps, video, tmp):
 
     with steps.step("Review: confirm, reject and delete, then undo each"):
         before = captions(char_dir)
-        check(len(pngs) >= 3, "too few images to test the review")
-        first, second, third = pngs[:3]
+        first, second, third = (pngs * 3)[:3]
         check(positives.confirm(char_dir, first), "confirming an image failed")
+        positives.remove(char_dir, first.stem)
         rejected = positives.reject_image(char_dir, second)
         check(rejected is not None and second.stem in negatives.load(char_dir)[0], "rejecting an image failed")
-        deleted = negatives.trash(char_dir, third)
-        positives.remove(char_dir, first.stem)
         positives.unreject(char_dir, rejected, second.parent)
+        deleted = negatives.trash(char_dir, third)
+        check(not third.exists(), "deleting an image failed")
         negatives.move_pair(deleted, third.parent)
         check(captions(char_dir) == before, "undoing the review didn't bring every image back")
         check(not negatives.load(char_dir)[0] and not positives.load(char_dir)[0],
@@ -267,6 +269,8 @@ def run_selftest(video=None, keep=False):
         failed = True
         if isinstance(e, KeyboardInterrupt):
             print("\nStopped.")
+        elif not steps.failed:
+            print(f"  {MARK['fail']} {type(e).__name__}: {e}")
     finally:
         common.PROJECTS_DIR = root
         common.release_models()
